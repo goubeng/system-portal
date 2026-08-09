@@ -90,7 +90,7 @@
 </template>
 
 <script setup>
-import {computed,onBeforeUnmount,onMounted,reactive,ref} from 'vue'
+import {computed,onMounted,reactive,ref} from 'vue'
 import {MessagePlugin} from 'tdesign-vue-next'
 
 const projects=ref([])
@@ -101,7 +101,6 @@ const dockerStarting=ref(false)
 const busyId=ref('')
 const busyAction=ref('')
 const logDialog=reactive({visible:false,name:'',lines:[]})
-let timer
 
 const healthyCount=computed(()=>projects.value.filter(item=>['healthy','external'].includes(item.status)).length)
 const dockerText=computed(()=>infrastructure.docker?.running ? `运行中${infrastructure.docker.version ? ` · ${infrastructure.docker.version}` : ''}` : infrastructure.docker?.installed ? '已安装，尚未运行' : '未检测到安装')
@@ -179,9 +178,7 @@ function statusMeta(status){
 
 onMounted(async()=>{
   try{await bootstrap()}catch(error){MessagePlugin.error(error.message)}
-  timer=setInterval(()=>refreshStatus(true),3500)
 })
-onBeforeUnmount(()=>clearInterval(timer))
 </script>
 
 <style scoped>
