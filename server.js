@@ -2,6 +2,7 @@ const crypto=require('crypto')
 const fs=require('fs')
 const http=require('http')
 const net=require('net')
+const os=require('os')
 const path=require('path')
 const {execFile,spawn}=require('child_process')
 
@@ -10,7 +11,9 @@ const workspaceRoot=path.resolve(root,'..')
 const distRoot=path.join(root,'dist')
 const runtimeRoot=path.join(root,'runtime')
 const logRoot=path.join(runtimeRoot,'logs')
-const portalHost='127.0.0.1'
+const projectConfigPath=path.join(root,'config','projects.json')
+const projectOrderPath=path.join(root,'config','project-order.json')
+const portalHost='0.0.0.0'
 const portalPort=3000
 const csrfToken=crypto.randomBytes(24).toString('hex')
 const managed=new Map()
@@ -19,13 +22,18 @@ const lastExit=new Map()
 const locks=new Set()
 
 fs.mkdirSync(logRoot,{recursive:true})
-const projects=JSON.parse(fs.readFileSync(path.join(root,'config','projects.json'),'utf8')).map(item=>{
-  const projectPath=path.resolve(root,item.relativePath)
-  if(projectPath!==workspaceRoot && !projectPath.startsWith(workspaceRoot+path.sep))throw new Error(`Project ${item.id} is outside workspace.`)
-  return {...item,projectPath}
-})
-const projectMap=new Map(projects.map(item=>[item.id,item]))
-if(projectMap.size!==projects.length)throw new Error('Duplicate project IDs.')
+let projects=loadProjects()
+let projectMap=new Map(projects.map(item=>[item.id,item]))
+
+function loadProjects(){
+  const items=JSON.parse(fs.readFileSync(projectConfigPath,'utf8')).map(item=>{
+    const projectPath=path.resolve(root,item.relativePath)
+    if(projectPath!==workspaceRoot && !projectPath.startsWith(workspaceRoot+path.sep))throw new Error(`Project ${item.id} is outside workspace.`)
+    return {...item,projectPath}
+  })
+  if(new Set(items.map(item=>item.id)).size!==items.length)throw new Error('Duplicate project IDs.')
+  return sortProjects(items,readProjectOrder(items))
+}
 
 const mime={'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'application/javascript; charset=utf-8','.json':'application/json; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.ico':'image/x-icon','.woff2':'font/woff2'}
 const securityHeaders={
@@ -36,6 +44,22 @@ const securityHeaders={
 function send(res,status,body,type='application/json; charset=utf-8'){
   res.writeHead(status,{'Content-Type':type,...securityHeaders})
   res.end(type.startsWith('application/json') ? JSON.stringify(body) : body)
+}
+
+function readJsonBody(req,limit=8192){
+  return new Promise((resolve,reject)=>{
+    let body=''
+    req.setEncoding('utf8')
+    req.on('data',chunk=>{
+      body+=chunk
+      if(body.length>limit)reject(new Error('请求体过大'))
+    })
+    req.on('end',()=>{
+      try{resolve(body ? JSON.parse(body) : {})}
+      catch{reject(new Error('请求体格式错误'))}
+    })
+    req.on('error',reject)
+  })
 }
 
 function sanitizeLine(value){
@@ -96,8 +120,39 @@ function candidatePorts(project){
   }))
 }
 
-function projectUrl(project,ports){return `http://127.0.0.1:${ports.webPort}${project.entry}`}
+function projectUrl(project,ports,host='127.0.0.1'){return `http://${host}:${ports.webPort}${project.entry}`}
 function healthUrl(project,ports){return `http://127.0.0.1:${ports.webPort}${project.healthPath}`}
+
+function lanHosts(){
+  const addresses=Object.values(os.networkInterfaces())
+    .flat()
+    .filter(item=>item && item.family==='IPv4' && !item.internal)
+    .map(item=>item.address)
+    .filter(address=>/^(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(address))
+  return [...new Set(addresses)].sort((a,b)=>scoreLanHost(a)-scoreLanHost(b))
+}
+
+function scoreLanHost(address){
+  if(address.startsWith('192.168.'))return 0
+  if(address.startsWith('10.'))return 1
+  return 2
+}
+
+function publicUrls(project,ports){
+  const networkUrls=lanHosts().map(host=>projectUrl(project,ports,host))
+  return {url:projectUrl(project,ports),networkUrl:networkUrls[0]||null,networkUrls}
+}
+
+function shareUrls(project,ports={webPort:project.webPort}){
+  const urls=publicUrls(project,ports)
+  return {shareUrl:urls.url,networkShareUrl:urls.networkUrl,networkShareUrls:urls.networkUrls}
+}
+
+function portalUrls(){
+  const localUrl=`http://127.0.0.1:${portalPort}/`
+  const networkUrls=lanHosts().map(host=>`http://${host}:${portalPort}/`)
+  return {url:localUrl,networkUrl:networkUrls[0]||null,networkUrls}
+}
 
 async function probeProject(project,ports){
   const response=await requestUrl(healthUrl(project,ports))
@@ -129,17 +184,43 @@ async function projectStatus(project){
   if(current){
     const healthy=await probeProject(project,current.ports)
     const alive=current.child.exitCode===null && !current.child.killed
-    return {...publicProject(project),status:healthy?'healthy':alive?'starting':'exited',managed:alive,url:projectUrl(project,current.ports),ports:current.ports,pid:alive?current.child.pid:null,lastExit:lastExit.get(project.id)||null}
+    return {...publicProject(project),status:healthy?'healthy':alive?'starting':'exited',managed:alive,...shareUrls(project,current.ports),...publicUrls(project,current.ports),ports:current.ports,pid:alive?current.child.pid:null,lastExit:lastExit.get(project.id)||null}
   }
   const external=await findExternal(project)
-  if(external)return {...publicProject(project),status:'external',managed:false,url:projectUrl(project,external),ports:external,pid:null,lastExit:lastExit.get(project.id)||null}
+  if(external)return {...publicProject(project),status:'external',managed:false,...shareUrls(project,external),...publicUrls(project,external),ports:external,pid:null,lastExit:lastExit.get(project.id)||null}
   const conflict=await Promise.all(candidatePorts(project).map(item=>isPortOpen(item.webPort)))
-  return {...publicProject(project),status:conflict.some(Boolean)?'conflict':'stopped',managed:false,url:null,ports:null,pid:null,lastExit:lastExit.get(project.id)||null}
+  return {...publicProject(project),status:conflict.some(Boolean)?'conflict':'stopped',managed:false,...shareUrls(project),url:null,networkUrl:null,networkUrls:[],ports:null,pid:null,lastExit:lastExit.get(project.id)||null}
 }
 
 function publicProject(project){
   const {projectPath,relativePath,...safe}=project
   return {...safe,folder:path.basename(projectPath),recommended:{webPort:project.webPort,apiPort:project.apiPort||null}}
+}
+
+function sameIdSet(ids){
+  return ids.length===projects.length && new Set(ids).size===ids.length && ids.every(id=>projectMap.has(id))
+}
+
+function readProjectOrder(items){
+  if(!fs.existsSync(projectOrderPath))return items.map(item=>item.id)
+  const ids=JSON.parse(fs.readFileSync(projectOrderPath,'utf8'))
+  if(!Array.isArray(ids) || !ids.every(id=>typeof id==='string'))throw new Error('显示顺序配置格式错误')
+  const currentIds=new Set(items.map(item=>item.id))
+  return [...ids.filter(id=>currentIds.has(id)),...items.map(item=>item.id).filter(id=>!ids.includes(id))]
+}
+
+function sortProjects(items,ids){
+  const byId=new Map(items.map(item=>[item.id,item]))
+  return ids.map(id=>byId.get(id)).filter(Boolean)
+}
+
+function reorderProjects(ids){
+  if(!Array.isArray(ids) || !ids.every(id=>typeof id==='string'))throw new Error('显示顺序参数无效')
+  if(!sameIdSet(ids))throw new Error('显示顺序必须包含全部现有项目，且不能重复')
+  const currentById=new Map(projects.map(project=>[project.id,project]))
+  projects=ids.map(id=>currentById.get(id))
+  fs.writeFileSync(projectOrderPath,`${JSON.stringify(ids,null,2)}\n`,'utf8')
+  projectMap=new Map(projects.map(item=>[item.id,item]))
 }
 
 async function waitForHealthy(project,runtime,timeoutMs){
@@ -157,7 +238,7 @@ function spawnProject(project,ports){
   let args
   if(project.kind==='static'){
     command=process.execPath
-    args=[path.join(root,'lib','static-server.js'),`--root=${project.projectPath}`,`--port=${ports.webPort}`,`--entry=${project.entry}`]
+    args=[path.join(root,'lib','static-server.js'),`--root=${project.projectPath}`,`--port=${ports.webPort}`,`--entry=${project.entry}`,'--host=0.0.0.0']
   }else{
     if(!fs.existsSync(path.join(project.projectPath,'node_modules')))throw new Error('项目依赖不存在，请先在项目目录执行 npm ci')
     if(process.platform==='win32'){
@@ -239,7 +320,10 @@ async function startDocker(){
   return {docker:{installed:true,running:false,starting:true},nocodb:current.nocodb,postgres:current.postgres}
 }
 
-function allowedHost(req){return [`127.0.0.1:${portalPort}`,`localhost:${portalPort}`].includes(req.headers.host)}
+function allowedHost(req){
+  const hosts=['127.0.0.1','localhost',...lanHosts()].map(host=>`${host}:${portalPort}`)
+  return hosts.includes(req.headers.host)
+}
 function authorizedMutation(req){
   const origin=req.headers.origin
   const originOk=!origin || origin===`http://${req.headers.host}`
@@ -249,7 +333,7 @@ function authorizedMutation(req){
 async function apiHandler(req,res,url){
   if(req.method==='GET' && url.pathname==='/api/bootstrap'){
     const statuses=await Promise.all(projects.map(projectStatus))
-    return send(res,200,{token:csrfToken,projects:statuses,infrastructure:await infrastructureStatus(),portal:{host:portalHost,port:portalPort}})
+    return send(res,200,{token:csrfToken,projects:statuses,infrastructure:await infrastructureStatus(),portal:{host:portalHost,port:portalPort,...portalUrls()}})
   }
   if(req.method==='GET' && url.pathname==='/api/status')return send(res,200,{projects:await Promise.all(projects.map(projectStatus)),infrastructure:await infrastructureStatus()})
   const logMatch=url.pathname.match(/^\/api\/projects\/(\d{2})\/logs$/)
@@ -259,6 +343,11 @@ async function apiHandler(req,res,url){
     return send(res,200,{lines:(logs.get(logMatch[1])||[]).slice(-tail)})
   }
   if(req.method==='POST' && !authorizedMutation(req))return send(res,403,{message:'请求校验失败，请刷新门户后重试'})
+  if(req.method==='POST' && url.pathname==='/api/projects/order'){
+    const body=await readJsonBody(req)
+    reorderProjects(body.ids)
+    return send(res,200,{projects:await Promise.all(projects.map(projectStatus))})
+  }
   const actionMatch=url.pathname.match(/^\/api\/projects\/(\d{2})\/(start|stop)$/)
   if(req.method==='POST' && actionMatch){
     const project=projectMap.get(actionMatch[1])
@@ -292,7 +381,7 @@ const server=http.createServer(async(req,res)=>{
 
 server.listen(portalPort,portalHost,()=>{
   fs.writeFileSync(path.join(runtimeRoot,'portal.pid'),String(process.pid))
-  console.log(`System portal: http://${portalHost}:${portalPort}`)
+  console.log(`System portal: ${portalUrls().networkUrl || portalUrls().url}`)
 })
 
 async function shutdown(){

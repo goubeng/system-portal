@@ -1,7 +1,7 @@
 [
   {
     "id": "01",
-    "name": "公用会场预定管理（原生版）",
+    "name": "公用会场预定管理",
     "shortName": "会场预定·原生",
     "description": "会场日历、预订申请、审批、会务保障和基础配置。保留用于旧版对照，后续由 Vue 版替代。",
     "implementation": "原生多页面",
@@ -20,7 +20,7 @@
   },
   {
     "id": "02",
-    "name": "办公用房及公产房管理（原生版）",
+    "name": "办公用房及公产房管理",
     "shortName": "办公用房·原生",
     "description": "房产台账、分配使用、年度核验、退房、费用和公产房管理。",
     "implementation": "原生多页面",
@@ -47,6 +47,7 @@
     "relativePath": "../3-物业管理子系统",
     "kind": "npm",
     "entry": "/",
+    "mobileEntry": "/mobile",
     "webPort": 3301,
     "healthPath": "/",
     "healthType": "html",
@@ -65,6 +66,7 @@
     "relativePath": "../4-办公用品及耗材管理系统",
     "kind": "npm",
     "entry": "/",
+    "mobileEntry": "/",
     "webPort": 3401,
     "apiPort": 3402,
     "healthPath": "/api/health",
@@ -110,7 +112,7 @@
   },
   {
     "id": "07",
-    "name": "公用会场预定管理（Vue版）",
+    "name": "公用会场预定管理",
     "shortName": "会场预定·Vue",
     "description": "会场查询、预订、确认、保障、消息与权限管理的新技术栈实现。",
     "implementation": "Vue 3 · TDesign",
