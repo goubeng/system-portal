@@ -41,10 +41,10 @@
     </header>
 
     <section class="system-grid">
-      <article v-for="item in projects" :key="item.id" class="system-card" :class="`status-${item.status}`">
+      <article v-for="(item,index) in projects" :key="item.id" class="system-card" :class="`status-${item.status}`">
         <div class="card-topline">
           <div class="system-title">
-            <span class="system-index">{{ item.id }}</span>
+            <span class="system-index">{{ displayIndex(index) }}</span>
             <div>
               <h3>{{ item.name }}</h3>
               <div class="tag-row">
@@ -297,6 +297,10 @@ async function saveOrder(){
 
 function openProject(item){
   if(item.url)window.open(item.url,'_blank','noopener,noreferrer')
+}
+
+function displayIndex(index){
+  return String(index+1).padStart(2,'0')
 }
 
 function accessUrl(item){
