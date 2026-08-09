@@ -5,20 +5,22 @@
         <div class="portal-info">
           <div class="title-line">
             <h1>综合门户</h1>
+          </div>
+          <div class="portal-address">
             <a class="portal-url" :href="portalAccessUrl" target="_blank" rel="noopener noreferrer">{{ portalAccessUrl }}</a>
             <t-button class="portal-copy" size="small" theme="default" variant="text" title="复制门户访问地址" @click="copyUrl(portalAccessUrl)"><CopyIcon /></t-button>
-          </div>
-          <div class="summary-row">
-            <div class="summary-pill"><span>运行中</span><strong>{{ healthyCount }}</strong></div>
-            <div class="summary-pill"><span>已登记</span><strong>{{ projects.length }}</strong></div>
           </div>
         </div>
         <div class="top-tools">
           <div class="infra-items">
+            <div class="summary-row infra-summary">
+              <div class="summary-pill is-running"><span>运行中</span><strong>{{ healthyCount }}</strong></div>
+              <div class="summary-pill is-registered"><span>已登记</span><strong>{{ projects.length }}</strong></div>
+            </div>
             <div class="infra-item">
               <span :class="['status-dot', infrastructure.docker?.running ? 'is-up' : '']"></span>
-              <div><strong>Docker Desktop</strong><small>{{ dockerText }}</small></div>
-              <t-button class="infra-start" size="small" :disabled="infrastructure.docker?.running || dockerStarting" :loading="dockerStarting" @click="startDocker">启动</t-button>
+              <div><strong>Docker Desktop</strong><small>基础容器环境</small></div>
+              <t-tag class="infra-tag" :class="infrastructure.docker?.running ? 'is-ready' : 'is-muted'" variant="light">{{ infrastructure.docker?.running ? '运行中' : '未运行' }}</t-tag>
             </div>
             <div class="infra-item">
               <span :class="['status-dot', infrastructure.postgres?.running ? 'is-up' : '']"></span>
@@ -35,6 +37,7 @@
             <t-button class="tool-button" size="small" theme="default" variant="outline" title="外部服务停止说明" @click="helpDialog.visible=true"><HelpCircleIcon /></t-button>
             <t-button class="tool-button" size="small" theme="default" variant="outline" title="显示顺序" @click="openOrderDialog"><SettingIcon /></t-button>
             <t-button class="tool-button" size="small" theme="default" variant="outline" title="刷新" :loading="refreshing" @click="refreshStatus"><RefreshIcon /></t-button>
+            <t-button class="tool-button stop-portal-button" size="small" theme="danger" variant="outline" title="停止综合门户服务" :loading="stoppingPortal" @click="stopPortal"><PoweroffIcon /></t-button>
           </div>
         </div>
       </div>
@@ -84,7 +87,7 @@
       </article>
     </section>
 
-    <footer class="portal-footer">产品设计来自于GOUBENG的</footer>
+    <footer class="portal-footer">Design By ZHANGFENG</footer>
 
     <t-dialog v-model:visible="logDialog.visible" :header="`${logDialog.name} · 运行日志`" width="760px" :footer="false">
       <pre class="log-view">{{ logDialog.lines.length ? logDialog.lines.join('\n') : '暂无日志。项目可能尚未由本门户启动。' }}</pre>
@@ -155,6 +158,20 @@
       </div>
     </t-dialog>
 
+    <t-dialog v-model:visible="stopPortalDialog.visible" header="停止综合门户服务" placement="center" width="460px" :footer="false">
+      <div class="stop-confirm">
+        <div class="stop-confirm-icon"><PoweroffIcon /></div>
+        <div>
+          <h4>确认停止综合门户服务？</h4>
+          <p>停止后当前页面将无法继续访问，需要重新启动门户服务后才能再次打开。</p>
+        </div>
+      </div>
+      <div class="dialog-actions">
+        <t-button size="small" theme="default" variant="outline" @click="stopPortalDialog.visible=false">取消</t-button>
+        <t-button size="small" theme="danger" :loading="stoppingPortal" @click="confirmStopPortal">确认停止</t-button>
+      </div>
+    </t-dialog>
+
     <t-dialog v-model:visible="detailDialog.visible" :header="`${detailDialog.item?.name || ''} · 系统详情`" width="720px" :footer="false">
       <div v-if="detailDialog.item" class="detail-view">
         <p>{{ detailDialog.item.description }}</p>
@@ -177,20 +194,21 @@
 <script setup>
 import {computed,onMounted,reactive,ref} from 'vue'
 import {MessagePlugin} from 'tdesign-vue-next'
-import {CopyIcon,DesktopIcon,FileIcon,HelpCircleIcon,MobileIcon,RefreshIcon,SettingIcon,TerminalIcon} from 'tdesign-icons-vue-next'
+import {CopyIcon,DesktopIcon,FileIcon,HelpCircleIcon,MobileIcon,PoweroffIcon,RefreshIcon,SettingIcon,TerminalIcon} from 'tdesign-icons-vue-next'
 
 const projects=ref([])
 const portal=reactive({url:'http://127.0.0.1:3000/',networkUrl:null,networkUrls:[]})
 const infrastructure=reactive({docker:{},postgres:{},nocodb:{}})
 const token=ref('')
 const refreshing=ref(false)
-const dockerStarting=ref(false)
+const stoppingPortal=ref(false)
 const busyId=ref('')
 const busyAction=ref('')
 const logDialog=reactive({visible:false,name:'',lines:[]})
 const detailDialog=reactive({visible:false,item:null})
 const orderDialog=reactive({visible:false,ids:[]})
 const helpDialog=reactive({visible:false})
+const stopPortalDialog=reactive({visible:false})
 const opsCommands={
   findProcess:'Get-NetTCPConnection -LocalPort 3301 | Select-Object LocalAddress,LocalPort,State,OwningProcess',
   stopProcess:'Stop-Process -Id 进程ID',
@@ -202,7 +220,6 @@ const draggedOrderId=ref('')
 const healthyCount=computed(()=>projects.value.filter(item=>['healthy','external'].includes(item.status)).length)
 const orderItems=computed(()=>orderDialog.ids.map(id=>projects.value.find(item=>item.id===id)).filter(Boolean))
 const portalAccessUrl=computed(()=>portal.networkUrl || portal.url)
-const dockerText=computed(()=>infrastructure.docker?.running ? `运行中${infrastructure.docker.version ? ` · ${infrastructure.docker.version}` : ''}` : infrastructure.docker?.installed ? '已安装，尚未运行' : '未检测到安装')
 
 function assignInfrastructure(value={}){
   Object.assign(infrastructure.docker,value.docker||{})
@@ -248,14 +265,20 @@ async function projectAction(item,action){
   finally{busyId.value='';busyAction.value=''}
 }
 
-async function startDocker(){
-  dockerStarting.value=true
+async function stopPortal(){
+  stopPortalDialog.visible=true
+}
+
+async function confirmStopPortal(){
+  stoppingPortal.value=true
   try{
-    const data=await api('/api/infrastructure/docker/start',{method:'POST',body:'{}'})
-    assignInfrastructure(data.infrastructure)
-    MessagePlugin.success('已请求启动 Docker Desktop，请稍候')
-  }catch(error){MessagePlugin.error(error.message)}
-  finally{dockerStarting.value=false}
+    await api('/api/portal/stop',{method:'POST',body:'{}'})
+    stopPortalDialog.visible=false
+    MessagePlugin.success('综合门户服务正在停止')
+  }catch(error){
+    MessagePlugin.error(error.message)
+    stoppingPortal.value=false
+  }
 }
 
 function openOrderDialog(){
@@ -405,28 +428,32 @@ onMounted(async()=>{
 .portal-page{min-height:100vh;padding:0 0 24px;background:#f3f6fb}
 .top-panel{width:100%;margin:0 0 18px;padding:16px 0;background:#19243b;color:#fff;box-shadow:0 8px 22px rgba(24,36,59,.12)}
 .top-panel>*{width:calc(100% - 96px);max-width:1680px;margin-left:auto;margin-right:auto}
-.top-main{display:grid;grid-template-columns:minmax(260px,1fr) minmax(780px,auto);align-items:center;gap:32px}
+.top-main{display:grid;grid-template-columns:minmax(260px,1fr) minmax(900px,auto);align-items:center;gap:10px}
 .portal-info{min-width:0}
-.title-line{display:flex;align-items:baseline;gap:12px;min-width:0}
+.title-line{display:flex;align-items:baseline;gap:10px;min-width:0}
 .title-line h1{margin:0;font-size:24px;line-height:1.2;white-space:nowrap}
+.portal-address{display:flex;align-items:center;gap:10px;min-width:0;margin-top:8px}
 .portal-url{min-width:0;color:#8fb2ff;font-size:13px;font-weight:650;text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .portal-copy{flex:0 0 auto;width:26px;padding:0;color:#9fb8f3}
-.summary-row{display:flex;align-items:center;gap:10px;margin-top:12px}
-.top-tools{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:16px;min-width:0}
-.hero-actions{display:flex;align-items:center;gap:14px}
+.top-tools{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:10px;min-width:0}
+.hero-actions{display:flex;align-items:center;gap:10px}
 .tool-button{width:32px;height:32px;padding:0;border-color:rgba(115,142,196,.28);background:rgba(38,52,84,.92);color:#b8c8ef;box-shadow:0 1px 2px rgba(0,0,0,.18)}
 .tool-button:hover{border-color:rgba(114,156,255,.52);background:rgba(48,69,112,.95);color:#d7e2ff}
-.summary-pill{display:flex;align-items:center;gap:6px;min-width:auto;padding:5px 10px;border-left:2px solid #6d96ff;background:rgba(255,255,255,.08);white-space:nowrap}
+.stop-portal-button{border-color:rgba(227,77,89,.38);background:rgba(227,77,89,.12);color:#ff9aa3}
+.stop-portal-button:hover{border-color:rgba(255,154,163,.62);background:rgba(227,77,89,.2);color:#ffd1d5}
+.summary-row{display:flex;align-items:center;gap:10px}
+.summary-pill{display:flex;align-items:center;gap:6px;height:24px;min-width:auto;padding:0 10px;border-left:2px solid #6d96ff;background:rgba(255,255,255,.08);white-space:nowrap}
 .summary-pill strong{font-size:16px;line-height:1}
 .summary-pill span{color:#c2ccdd;font-size:12px;line-height:1}
-.infra-items{display:grid;grid-template-columns:repeat(3,minmax(220px,1fr));gap:14px}
-.infra-item{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:14px;min-height:58px;padding:12px 16px;background:rgba(255,255,255,.075);border:1px solid rgba(255,255,255,.08)}
+.summary-pill.is-running strong{color:#43d6a0}
+.summary-pill.is-registered strong{color:#8fb2ff}
+.infra-items{display:flex;align-items:center;gap:10px}
+.infra-item{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:10px;height:58px;padding:12px 16px;background:rgba(255,255,255,.075);border:1px solid rgba(255,255,255,.08)}
+.infra-item{flex:1 1 250px}
 .infra-item strong,.infra-item small{display:block}
-.infra-item strong{font-size:13px}
-.infra-item small{margin-top:2px;color:#aeb9cc;font-size:12px}
-.infra-start{border-color:transparent;background:#2e62d5;color:#fff;font-weight:650}
-.infra-start:hover{border-color:transparent;background:#2555bd;color:#fff}
-.infra-start:disabled{border-color:transparent;background:#31476f;color:#93a4c5;opacity:1}
+.infra-item strong{font-size:13px;white-space:nowrap}
+.infra-item small{margin-top:2px;color:#aeb9cc;font-size:12px;white-space:nowrap}
+.infra-summary{flex:0 0 max-content;flex-direction:column;align-items:flex-start;justify-content:center;gap:10px;width:max-content;min-width:0;height:58px;margin-right:0;padding:0;background:transparent;border:0}
 .infra-tag{height:24px;padding:0 10px;border:0;font-weight:650;font-size:12px;line-height:24px}
 .infra-tag.is-ready{background:rgba(30,185,129,.16);color:#43d6a0}
 .infra-tag.is-muted{background:rgba(139,151,175,.16);color:#a9b5c9}
@@ -482,6 +509,11 @@ onMounted(async()=>{
 .order-item strong{font-size:13px;line-height:1.45}
 .order-item small{margin-top:3px;color:#7a869a;font-size:12px}
 .order-footer{display:flex;justify-content:flex-end;gap:8px;padding-top:10px}
+.stop-confirm{display:grid;grid-template-columns:auto minmax(0,1fr);gap:14px;align-items:flex-start}
+.stop-confirm-icon{display:grid;place-items:center;width:40px;height:40px;border-radius:8px;background:#fff0f1;color:#d54941;font-size:22px}
+.stop-confirm h4{margin:0 0 6px;color:#172033;font-size:15px;line-height:1.45}
+.stop-confirm p{margin:0;color:#58677e;font-size:13px;line-height:1.7}
+.dialog-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:18px;padding-top:14px;border-top:1px solid #edf1f7}
 .ops-help{max-height:calc(100vh - 190px);overflow:auto;color:#344158;font-size:13px;line-height:1.7}
 .ops-help p{margin:0 0 12px;color:#58677e}
 .ops-help section{padding:12px 0;border-top:1px solid #edf1f7}

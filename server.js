@@ -304,6 +304,19 @@ async function stopProject(project){
   finally{locks.delete(project.id)}
 }
 
+async function stopManagedProjects(){
+  const entries=[...managed.entries()].filter(([id])=>!locks.has(id))
+  await Promise.all(entries.map(async([id,runtime])=>{
+    locks.add(id)
+    try{
+      await stopRuntime(id,runtime)
+      managed.delete(id)
+      appendLog(id,'portal','已通过头部操作停止服务')
+    }finally{locks.delete(id)}
+  }))
+  return entries.map(([id])=>id)
+}
+
 const dockerDesktop='C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe'
 const dockerCli='C:\\Program Files\\Docker\\Docker\\resources\\bin\\docker.exe'
 async function infrastructureStatus(){
@@ -347,6 +360,15 @@ async function apiHandler(req,res,url){
     const body=await readJsonBody(req)
     reorderProjects(body.ids)
     return send(res,200,{projects:await Promise.all(projects.map(projectStatus))})
+  }
+  if(req.method==='POST' && url.pathname==='/api/projects/stop-all'){
+    const stopped=await stopManagedProjects()
+    return send(res,200,{stopped,projects:await Promise.all(projects.map(projectStatus))})
+  }
+  if(req.method==='POST' && url.pathname==='/api/portal/stop'){
+    send(res,200,{message:'综合门户服务正在停止'})
+    setTimeout(()=>shutdown(),120).unref()
+    return
   }
   const actionMatch=url.pathname.match(/^\/api\/projects\/(\d{2})\/(start|stop)$/)
   if(req.method==='POST' && actionMatch){
