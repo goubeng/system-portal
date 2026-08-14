@@ -1,7 +1,7 @@
 $ErrorActionPreference='Stop'
 $portalRoot=$PSScriptRoot
-$healthUrl='http://127.0.0.1:3000/healthz'
-$portalUrl='http://127.0.0.1:3000/'
+$healthUrl='http://127.0.0.1:8484/healthz'
+$portalUrl='http://127.0.0.1:8484/'
 
 try {
   $health=Invoke-RestMethod -Uri $healthUrl -TimeoutSec 2

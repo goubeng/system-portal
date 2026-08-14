@@ -197,7 +197,7 @@ import {MessagePlugin} from 'tdesign-vue-next'
 import {CopyIcon,DesktopIcon,FileIcon,HelpCircleIcon,MobileIcon,PoweroffIcon,RefreshIcon,SettingIcon,TerminalIcon} from 'tdesign-icons-vue-next'
 
 const projects=ref([])
-const portal=reactive({url:'http://127.0.0.1:3000/',networkUrl:null,networkUrls:[]})
+const portal=reactive({url:'http://127.0.0.1:8484/',networkUrl:null,networkUrls:[]})
 const infrastructure=reactive({docker:{},postgres:{},nocodb:{}})
 const token=ref('')
 const refreshing=ref(false)

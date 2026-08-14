@@ -1,5 +1,5 @@
 $ErrorActionPreference='Stop'
-$healthUrl='http://127.0.0.1:3000/healthz'
+$healthUrl='http://127.0.0.1:8484/healthz'
 try {$health=Invoke-RestMethod -Uri $healthUrl -TimeoutSec 2}catch{Write-Host 'Portal is not running.';exit 0}
 $pidFile=Join-Path $PSScriptRoot 'runtime\portal.pid'
 if(-not(Test-Path -LiteralPath $pidFile)){throw 'Portal PID file is missing. Refusing to stop an unknown process.'}
