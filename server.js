@@ -8,6 +8,7 @@ const {execFile,spawn}=require('child_process')
 
 const root=__dirname
 const workspaceRoot=path.resolve(root,'..')
+const projectRoots=[workspaceRoot,path.resolve(workspaceRoot,'..','..','协作文档')]
 const distRoot=path.join(root,'dist')
 const runtimeRoot=path.join(root,'runtime')
 const logRoot=path.join(runtimeRoot,'logs')
@@ -28,11 +29,16 @@ let projectMap=new Map(projects.map(item=>[item.id,item]))
 function loadProjects(){
   const items=JSON.parse(fs.readFileSync(projectConfigPath,'utf8')).map(item=>{
     const projectPath=path.resolve(root,item.relativePath)
-    if(projectPath!==workspaceRoot && !projectPath.startsWith(workspaceRoot+path.sep))throw new Error(`Project ${item.id} is outside workspace.`)
+    if(!projectRoots.some(projectRoot=>isInsideRoot(projectPath,projectRoot)))throw new Error(`Project ${item.id} is outside workspace.`)
     return {...item,projectPath}
   })
   if(new Set(items.map(item=>item.id)).size!==items.length)throw new Error('Duplicate project IDs.')
   return sortProjects(items,readProjectOrder(items))
+}
+
+function isInsideRoot(target,projectRoot){
+  const relative=path.relative(projectRoot,target)
+  return relative==='' || (!!relative && !relative.startsWith('..') && !path.isAbsolute(relative))
 }
 
 const mime={'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'application/javascript; charset=utf-8','.json':'application/json; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.ico':'image/x-icon','.woff2':'font/woff2'}
@@ -120,7 +126,7 @@ function candidatePorts(project){
   }))
 }
 
-function projectUrl(project,ports,host='127.0.0.1'){return `http://${host}:${ports.webPort}${project.entry}`}
+function projectUrl(project,ports,host='127.0.0.1',entry=project.entry){return `http://${host}:${ports.webPort}${entry}`}
 function healthUrl(project,ports){return `http://127.0.0.1:${ports.webPort}${project.healthPath}`}
 
 function lanHosts(){
@@ -140,7 +146,12 @@ function scoreLanHost(address){
 
 function publicUrls(project,ports){
   const networkUrls=lanHosts().map(host=>projectUrl(project,ports,host))
-  return {url:projectUrl(project,ports),networkUrl:networkUrls[0]||null,networkUrls}
+  const urls={url:projectUrl(project,ports),networkUrl:networkUrls[0]||null,networkUrls}
+  if(project.mobileEntry){
+    const networkMobileUrls=lanHosts().map(host=>projectUrl(project,ports,host,project.mobileEntry))
+    Object.assign(urls,{mobileUrl:projectUrl(project,ports,'127.0.0.1',project.mobileEntry),networkMobileUrl:networkMobileUrls[0]||null,networkMobileUrls})
+  }
+  return urls
 }
 
 function shareUrls(project,ports={webPort:project.webPort}){
@@ -189,7 +200,7 @@ async function projectStatus(project){
   const external=await findExternal(project)
   if(external)return {...publicProject(project),status:'external',managed:false,...shareUrls(project,external),...publicUrls(project,external),ports:external,pid:null,lastExit:lastExit.get(project.id)||null}
   const conflict=await Promise.all(candidatePorts(project).map(item=>isPortOpen(item.webPort)))
-  return {...publicProject(project),status:conflict.some(Boolean)?'conflict':'stopped',managed:false,...shareUrls(project),url:null,networkUrl:null,networkUrls:[],ports:null,pid:null,lastExit:lastExit.get(project.id)||null}
+  return {...publicProject(project),status:conflict.some(Boolean)?'conflict':'stopped',managed:false,...shareUrls(project),url:null,networkUrl:null,networkUrls:[],mobileUrl:null,networkMobileUrl:null,networkMobileUrls:[],ports:null,pid:null,lastExit:lastExit.get(project.id)||null}
 }
 
 function publicProject(project){
@@ -243,10 +254,10 @@ function spawnProject(project,ports){
     if(!fs.existsSync(path.join(project.projectPath,'node_modules')))throw new Error('项目依赖不存在，请先在项目目录执行 npm ci')
     if(process.platform==='win32'){
       command=process.env.ComSpec||'C:\\Windows\\System32\\cmd.exe'
-      args=['/d','/s','/c','npm.cmd','run','dev']
+      args=['/d','/s','/c','npm.cmd','run','dev','--','--host','0.0.0.0','--port',String(ports.webPort)]
     }else{
       command='npm'
-      args=['run','dev']
+      args=['run','dev','--','--host','0.0.0.0','--port',String(ports.webPort)]
     }
   }
   const env={...process.env,WEB_PORT:String(ports.webPort),PORT_STRICT:'true',BROWSER:'none'}
@@ -413,3 +424,4 @@ async function shutdown(){
 }
 process.once('SIGINT',shutdown)
 process.once('SIGTERM',shutdown)
+

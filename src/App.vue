@@ -44,46 +44,57 @@
     </header>
 
     <section class="system-grid">
-      <article v-for="(item,index) in projects" :key="item.id" class="system-card" :class="`status-${item.status}`">
+      <article v-for="(card,index) in systemCards" :key="card.key" class="system-card" :class="`status-${card.item.status}`">
         <div class="card-topline">
           <div class="system-title">
             <span class="system-index">{{ displayIndex(index) }}</span>
             <div>
-              <h3>{{ item.name }}</h3>
-              <div class="tag-row">
-                <span class="platform-tag" title="PC端" aria-label="PC端"><DesktopIcon /></span>
-                <span v-if="item.mobileEntry" class="platform-tag" title="移动端" aria-label="移动端"><MobileIcon /></span>
-                <span v-for="tech in compactTechTags(item)" :key="tech">{{ tech }}</span>
-              </div>
+              <h3>{{ card.item.name }}</h3>
             </div>
           </div>
           <div class="status-stack">
-            <t-tag :class="statusMeta(item.status).className" :theme="statusMeta(item.status).theme" variant="light">{{ statusMeta(item.status).label }}</t-tag>
-            <span v-if="item.lifecycle==='legacy'" class="lifecycle legacy">计划替代</span>
-            <span v-else-if="item.lifecycle==='replacement'" class="lifecycle replacement">新版实现</span>
+            <t-tag :class="statusMeta(card.item.status).className" :theme="statusMeta(card.item.status).theme" variant="light">{{ statusMeta(card.item.status).label }}</t-tag>
+            <span v-if="!card.versions && card.item.lifecycle==='legacy'" class="lifecycle legacy">计划替代</span>
+            <span v-else-if="!card.versions && card.item.lifecycle==='replacement'" class="lifecycle replacement">新版实现</span>
           </div>
         </div>
-        <p class="description">{{ item.description }}</p>
+        <div v-if="card.versions" class="version-switch" role="group" aria-label="系统版本切换">
+          <button v-for="version in card.versions" :key="version.id" type="button" :class="{active:selectedVersionId(card)===version.id}" :aria-pressed="selectedVersionId(card)===version.id" @click="selectedVersionIds[card.key]=version.id">{{ versionLabel(version) }}</button>
+        </div>
+        <div class="tag-row">
+          <span class="platform-tag" title="PC端" aria-label="PC端"><DesktopIcon /></span>
+          <span v-if="card.item.mobileEntry" class="platform-tag" title="移动端" aria-label="移动端"><MobileIcon /></span>
+          <span v-for="tech in compactTechTags(card.item)" :key="tech">{{ tech }}</span>
+        </div>
+        <p class="description">{{ card.item.description }}</p>
         <div class="access-row">
-          <span>访问地址</span>
-          <div v-if="accessUrls(item).length" class="access-list">
-            <div v-for="url in accessUrls(item)" :key="url" class="access-item">
-              <a :href="url" target="_blank" rel="noopener noreferrer">{{ url }}</a>
-              <t-button class="copy-button" size="small" theme="default" variant="text" title="复制访问地址" @click="copyUrl(url)"><CopyIcon /></t-button>
+          <div v-if="accessGroups(card.item).length" class="access-list">
+            <div v-for="group in accessGroups(card.item)" :key="group.type" class="access-group">
+              <div class="access-type" :title="group.label" :aria-label="group.label">
+                <DesktopIcon v-if="group.type==='pc'" />
+                <MobileIcon v-else />
+                <em>{{ group.label }}</em>
+              </div>
+              <div class="access-links">
+                <div v-for="url in group.urls" :key="url" class="access-item">
+                  <a :href="url" target="_blank" rel="noopener noreferrer">{{ url }}</a>
+                  <t-button class="copy-button" size="small" theme="default" variant="text" title="复制访问地址" @click="copyUrl(url)"><CopyIcon /></t-button>
+                </div>
+              </div>
             </div>
           </div>
           <em v-else class="access-placeholder">启动后生成</em>
         </div>
         <div class="card-actions">
-          <t-button class="log-button" size="small" theme="default" variant="text" @click="showLogs(item)"><FileIcon />日志</t-button>
+          <t-button class="log-button" size="small" theme="default" variant="text" @click="showLogs(card.item)"><FileIcon />运行日志</t-button>
           <div class="primary-actions">
-            <t-button size="small" :theme="primaryActionTheme(item)" :loading="busyId===item.id && !!busyAction" :disabled="primaryActionDisabled(item)" @click="projectAction(item, primaryAction(item))">{{ primaryActionLabel(item) }}</t-button>
-            <t-button size="small" theme="default" variant="outline" :disabled="!item.url" @click="openProject(item)">打开系统</t-button>
-            <t-button size="small" theme="default" variant="outline" @click="showDetails(item)">详情</t-button>
+            <t-button size="small" :theme="primaryActionTheme(card.item)" :loading="busyId===card.item.id && !!busyAction" :disabled="primaryActionDisabled(card.item)" @click="projectAction(card.item, primaryAction(card.item))">{{ primaryActionLabel(card.item) }}</t-button>
+            <t-button size="small" theme="default" variant="outline" :disabled="!card.item.url" @click="openProject(card.item)">进入系统</t-button>
+            <t-button size="small" theme="default" variant="outline" @click="showDetails(card.item)">详情</t-button>
           </div>
         </div>
-        <p v-if="item.status==='external'" class="hint">外部运行，门户不停止。</p>
-        <p v-if="item.status==='conflict'" class="hint danger">端口被其他程序占用。</p>
+        <p v-if="card.item.status==='external'" class="hint">外部运行，门户不停止。</p>
+        <p v-if="card.item.status==='conflict'" class="hint danger">端口被其他程序占用。</p>
       </article>
     </section>
 
@@ -182,7 +193,7 @@
           <div><dt>技术栈</dt><dd>{{ detailDialog.item.techStack.join(' · ') }}</dd></div>
           <div><dt>推荐端口</dt><dd>Web {{ detailDialog.item.recommended.webPort }}<template v-if="detailDialog.item.recommended.apiPort"> / API {{ detailDialog.item.recommended.apiPort }}</template></dd></div>
           <div v-if="detailDialog.item.ports"><dt>实际端口</dt><dd>Web {{ detailDialog.item.ports.webPort }}<template v-if="detailDialog.item.ports.apiPort"> / API {{ detailDialog.item.ports.apiPort }}</template></dd></div>
-          <div v-if="detailAccessUrls(detailDialog.item).length"><dt>访问地址</dt><dd>{{ detailAccessUrls(detailDialog.item).join(' · ') }}</dd></div>
+          <div v-if="detailAccessUrls(detailDialog.item).length"><dt>访问地址</dt><dd><template v-for="group in detailAccessGroups(detailDialog.item)" :key="group.type">{{ group.label }}：{{ group.urls.join(' · ') }}<br /></template></dd></div>
           <div v-if="detailDialog.item.dependencies.length"><dt>依赖</dt><dd>{{ detailDialog.item.dependencies.join(' · ') }}</dd></div>
           <div v-if="detailDialog.item.lastExit"><dt>上次退出</dt><dd>{{ detailDialog.item.lastExit.code ?? detailDialog.item.lastExit.signal ?? '未知' }}</dd></div>
         </dl>
@@ -216,10 +227,30 @@ const opsCommands={
 }
 const savingOrder=ref(false)
 const draggedOrderId=ref('')
+const selectedVersionIds=reactive({})
 
 const healthyCount=computed(()=>projects.value.filter(item=>['healthy','external'].includes(item.status)).length)
 const orderItems=computed(()=>orderDialog.ids.map(id=>projects.value.find(item=>item.id===id)).filter(Boolean))
 const portalAccessUrl=computed(()=>portal.networkUrl || portal.url)
+const systemCards=computed(()=>{
+  const groups=new Map()
+  for(const project of projects.value){
+    const entries=groups.get(project.name)||[]
+    entries.push(project)
+    groups.set(project.name,entries)
+  }
+  const versionedNames=new Set([...groups].filter(([,entries])=>entries.length===2 && entries.some(item=>item.lifecycle==='replacement')).map(([name])=>name))
+  const handledNames=new Set()
+  return projects.value.flatMap(project=>{
+    if(!versionedNames.has(project.name))return [{key:project.id,item:project,versions:null}]
+    if(handledNames.has(project.name))return []
+    handledNames.add(project.name)
+    const versions=groups.get(project.name)
+    const defaultVersion=versions.find(item=>item.lifecycle==='replacement')||versions[0]
+    const selectedId=selectedVersionIds[`versions:${project.name}`]||defaultVersion.id
+    return [{key:`versions:${project.name}`,item:versions.find(item=>item.id===selectedId)||defaultVersion,versions}]
+  })
+})
 
 function assignInfrastructure(value={}){
   Object.assign(infrastructure.docker,value.docker||{})
@@ -326,17 +357,39 @@ function displayIndex(index){
   return String(index+1).padStart(2,'0')
 }
 
-function accessUrl(item){
-  return accessUrls(item)[0] || ''
+function selectedVersionId(card){
+  return selectedVersionIds[card.key]||card.item.id
 }
 
-function accessUrls(item){
+function versionLabel(item){
+  return item.lifecycle==='replacement'?'新版':'旧版'
+}
+
+function accessUrl(item){
+  return accessUrls(item,'pc')[0] || ''
+}
+
+function accessUrls(item,type='pc'){
   if(!item.url)return []
+  if(type==='mobile')return uniqueUrls([item.mobileUrl,item.networkMobileUrl,...(item.networkMobileUrls||[])])
   return uniqueUrls([item.url,item.networkUrl,...(item.networkUrls||[])])
 }
 
+function accessGroups(item){
+  const groups=[]
+  const pcUrls=accessUrls(item,'pc')
+  const mobileUrls=accessUrls(item,'mobile')
+  if(pcUrls.length)groups.push({type:'pc',label:'PC端',urls:pcUrls})
+  if(mobileUrls.length)groups.push({type:'mobile',label:'移动端',urls:mobileUrls})
+  return groups
+}
+
+function detailAccessGroups(item){
+  return item ? accessGroups(item) : []
+}
+
 function detailAccessUrls(item){
-  return item ? accessUrls(item) : []
+  return detailAccessGroups(item).flatMap(group=>group.urls)
 }
 
 function uniqueUrls(urls){
@@ -460,7 +513,7 @@ onMounted(async()=>{
 .status-dot{width:10px;height:10px;border-radius:50%;background:#6f7b8f;box-shadow:0 0 0 4px rgba(111,123,143,.16)}
 .status-dot.is-up{background:#22c98b;box-shadow:0 0 0 4px rgba(34,201,139,.15)}
 .system-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:15px;width:calc(100% - 96px);max-width:1680px;margin:0 auto}
-.system-card{display:flex;flex-direction:column;min-height:270px;padding:18px;border:1px solid #dfe5ef;border-top:3px solid #c8d0dc;background:#fff;box-shadow:0 4px 18px rgba(33,52,85,.055);transition:.18s ease}
+.system-card{display:flex;flex-direction:column;min-height:300px;padding:18px;border:1px solid #dfe5ef;border-top:3px solid #c8d0dc;background:#fff;box-shadow:0 4px 18px rgba(33,52,85,.055);transition:.18s ease}
 .system-card.status-healthy{border-top:3px solid #20b982}
 .system-card.status-external{border-top:3px solid #e6a23c}
 .system-card.status-conflict,.system-card.status-exited{border-top:3px solid #e34d59}
@@ -471,6 +524,10 @@ onMounted(async()=>{
 .system-index{display:grid;flex:0 0 auto;place-items:center;width:36px;height:28px;background:#edf3ff;color:#2e62d5;font-weight:800;font-variant-numeric:tabular-nums}
 .system-title h3{margin:0;font-size:17px;line-height:1.45}
 .system-title h3{display:-webkit-box;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:2}
+.version-switch{display:inline-flex;align-self:center;gap:2px;margin-top:12px;padding:3px;border:1px solid #d8e1ef;border-radius:999px;background:#f7f9fc}
+.version-switch button{width:58px;height:26px;padding:0;border:0;border-radius:999px;background:transparent;color:#66758d;font:600 11px/1 Inter,"Microsoft YaHei",sans-serif;cursor:pointer}
+.version-switch button.active{background:#2e62d5;color:#fff;box-shadow:0 1px 2px rgba(25,55,120,.2)}
+.version-switch button:focus-visible{outline:2px solid #7ba0ef;outline-offset:1px}
 .tag-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:8px}
 .tag-row span{padding:3px 9px;border-radius:999px;background:#f1f4f9;color:#526078;font-size:11px;line-height:1.5}
 .tag-row .platform-tag{display:grid;place-items:center;width:24px;height:24px;padding:0;background:#e9f2ff;color:#2e62d5;border:1px solid #d8e6ff}
@@ -480,11 +537,15 @@ onMounted(async()=>{
 .lifecycle.legacy{background:#fff2dc;color:#a86500}
 .lifecycle.replacement{background:#e9f8f2;color:#087e56}
 .description{display:-webkit-box;min-height:58px;margin:14px 0;color:#58677e;font-size:12px;line-height:1.6;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:3}
-.access-row{display:grid;grid-template-columns:62px minmax(0,1fr);align-items:start;gap:8px;margin-top:auto;padding:9px 10px;background:#f6f8fc;border:1px solid #edf1f7;font-size:12px}
-.access-row span{color:#8791a3}
+.access-row{display:flex;flex-direction:column;align-items:stretch;gap:6px;margin-top:auto;padding:9px 10px;background:#f6f8fc;border:1px solid #edf1f7;font-size:12px}
 .access-row a{min-width:0;color:#2e62d5;font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .access-placeholder{min-width:0;color:#a1acbd;font-size:12px;font-style:normal;font-weight:400;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.access-list{display:flex;flex-direction:column;gap:5px;min-width:0}
+.access-list{display:flex;flex-direction:column;gap:7px;min-width:0}
+.access-group{display:grid;grid-template-columns:58px minmax(0,1fr);align-items:start;gap:6px;min-width:0}
+.access-type{display:inline-flex;align-items:center;gap:4px;height:22px;color:#6b7a91;white-space:nowrap}
+.access-type em{font-style:normal;font-size:11px;line-height:1}
+.access-type :deep(svg){width:14px;height:14px}
+.access-links{display:flex;flex-direction:column;gap:4px;min-width:0}
 .access-item{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:6px;min-width:0}
 .copy-button{width:28px;padding:0;color:#6b7a91}
 .card-actions{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:12px;padding-top:12px;border-top:1px solid #e8edf5}
