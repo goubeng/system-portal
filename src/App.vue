@@ -558,14 +558,14 @@ onBeforeUnmount(() => clearInterval(timer))
 .url-items { display: flex; flex-direction: column; gap: 8px; flex: 1; min-width: 0; }
 .url-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
 .url {
-  color: #0052d9; font-size: 13px; line-height: 1.5;
-  text-decoration: none; border-bottom: 1px solid rgba(0,82,217,0.3);
+  color: #0052d9; font-size: 12px; line-height: 1.5;
+  text-decoration: none; border-bottom: none;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   flex: 1; min-width: 0; transition: all .15s; font-family: "Cascadia Code", Consolas, monospace;
 }
-.url:hover { color: #003cab; border-bottom-color: #003cab; }
-.url--lan { color: #d54941; border-bottom-color: rgba(213,73,65,0.3); }
-.url--lan:hover { color: #e37318; border-bottom-color: #e37318; }
+.url:hover { color: #003cab; text-decoration: underline; text-underline-offset: 3px; }
+.url--lan { color: #d54941; }
+.url--lan:hover { color: #e37318; text-decoration: underline; }
 .copy-btn {
   background: none; border: none; color: rgba(0,0,0,0.4); cursor: pointer; padding: 2px;
   display: flex; align-items: center; justify-content: center; transition: color 0.2s;
