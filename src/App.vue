@@ -35,9 +35,6 @@
         <button class="tb-action-btn tb-help" @click="helpDialogVisible = true">
           <help-circle-icon /> 帮助
         </button>
-        <button class="tb-action-btn tb-refresh" :disabled="refreshing" @click="refreshStatus">
-          <refresh-icon /> 刷新状态
-        </button>
         <button class="tb-action-btn tb-stop" @click="stopAll">
           <stop-icon /> 全部停止
         </button>
@@ -470,15 +467,15 @@ onBeforeUnmount(() => clearInterval(timer))
 .chip-btn:hover { background: #3b82f6; color: #fff; border-color: #3b82f6; }
 .chip-btn:disabled { opacity: .45; cursor: default; }
 
-.top-bar-right { display: flex; gap: 10px; flex-shrink: 0; }
+.top-bar-right { display: flex; gap: 8px; flex-shrink: 0; }
 .tb-action-btn {
-  display: inline-flex; align-items: center; gap: 6px;
-  height: 32px; padding: 0 16px;
-  border-radius: 16px; font-size: 13px; font-weight: 600;
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 28px; padding: 0 11px;
+  border-radius: 14px; font-size: 11px; font-weight: 500;
   cursor: pointer; transition: all 0.2s;
   border: 1px solid transparent; outline: none;
 }
-.tb-action-btn svg { width: 16px; height: 16px; }
+.tb-action-btn svg { width: 13px; height: 13px; }
 
 .tb-help { background: rgba(255,255,255,0.05); color: #cbd5e1; border-color: rgba(255,255,255,0.1); }
 .tb-help:hover { background: rgba(255,255,255,0.15); color: #fff; transform: translateY(-1px); }
