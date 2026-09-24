@@ -3,7 +3,7 @@
     "id": "01",
     "name": "公用会场预定管理",
     "shortName": "会场预定·原生",
-    "description": "会场日历、预订申请、审批、会务保障和基础配置。保留用于旧版对照，已停用于下线对照，已停用于 Vue 版替代。",
+    "description": "会场日历、预订申请、审批、会务保障和基础配置。保留用于旧版对照，已停用于 Vue 版替代。",
     "implementation": "原生多页面",
     "techStack": ["HTML", "CSS"],
     "architecture": "浏览器静态页面直接访问共享 NocoDB 8080，无本地 API 服务。",

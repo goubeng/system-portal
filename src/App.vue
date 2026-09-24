@@ -1,120 +1,140 @@
 <template>
   <main class="portal-page">
-    <!-- 顶部导航栏 -->
+    <!-- ====== 顶部导航栏 ====== -->
     <header class="top-bar">
       <div class="top-bar-left">
         <div class="logo-area">
-          <span class="logo-icon">◉</span>
+          <svg class="logo-svg" viewBox="0 0 24 24" width="26" height="26"><circle cx="12" cy="12" r="10" fill="#3370ff"/><circle cx="12" cy="12" r="4" fill="#fff"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/></svg>
           <span class="logo-text">综合系统门户</span>
         </div>
         <div class="summary-pills">
-          <div class="summary-pill accent"><strong>运行中</strong><span>{{ healthyCount }}</span></div>
-          <div class="summary-pill"><strong>已登记</strong><span>{{ projects.length }}</span></div>
+          <div class="pill pill-running"><span class="pill-dot running"></span><b>运行中</b><em>{{ healthyCount }}</em></div>
+          <div class="pill pill-total"><span class="pill-dot total"></span><b>已登记</b><em>{{ projects.length }}</em></div>
         </div>
       </div>
       <div class="top-bar-center">
         <div class="infra-chip" :class="{ up: infrastructure.docker?.running }">
           <span class="chip-dot"></span>
-          <strong>Docker Desktop</strong>
-          <small>{{ dockerText }}</small>
-          <button v-if="!infrastructure.docker?.running" class="chip-action" :disabled="dockerStarting" @click="startDocker">启动</button>
+          <b>Docker Desktop</b>
+          <t-tag size="small" :theme="infrastructure.docker?.running ? 'success' : 'default'" variant="light">{{ dockerShortText }}</t-tag>
+          <button v-if="!infrastructure.docker?.running" class="chip-btn" :disabled="dockerStarting" @click="startDocker">启动</button>
         </div>
         <div class="infra-chip" :class="{ up: infrastructure.postgres?.running }">
           <span class="chip-dot"></span>
-          <strong>PostgreSQL 14</strong>
-          <small>{{ infrastructure.postgres?.running ? '可用' : '不可用' }}</small>
-          <t-tag size="small" :theme="infrastructure.postgres?.running ? 'success' : 'default'" variant="light">本机端口 5432</t-tag>
+          <b>PostgreSQL 14</b>
+          <t-tag size="small" :theme="infrastructure.postgres?.running ? 'success' : 'default'" variant="light">{{ infrastructure.postgres?.running ? '可用' : '不可用' }}</t-tag>
+          <small>本机端口 5432</small>
         </div>
         <div class="infra-chip" :class="{ up: infrastructure.nocodb?.running }">
           <span class="chip-dot"></span>
-          <strong>NocoDB</strong>
-          <small>{{ infrastructure.nocodb?.running ? '可用' : '不可用' }}</small>
-          <t-tag size="small" :theme="infrastructure.nocodb?.running ? 'success' : 'default'" variant="light">共享数据服务 8080</t-tag>
+          <b>NocoDB</b>
+          <t-tag size="small" :theme="infrastructure.nocodb?.running ? 'success' : 'default'" variant="light">{{ infrastructure.nocodb?.running ? '可用' : '不可用' }}</t-tag>
+          <small>共享数据服务 8080</small>
         </div>
       </div>
       <div class="top-bar-right">
-        <button class="icon-btn" title="刷新状态" :disabled="refreshing" @click="refreshStatus">⟳</button>
-        <button class="icon-btn" title="全部启动" @click="startAll">▶</button>
-        <button class="icon-btn" title="全部停止" @click="stopAll">■</button>
+        <button class="tb-icon" title="刷新状态" :disabled="refreshing" @click="refreshStatus"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 4v6h6M23 20v-6h-6"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg></button>
+        <button class="tb-icon" title="全部启动" @click="startAll"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button>
+        <button class="tb-icon" title="全部停止" @click="stopAll"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1"/></svg></button>
       </div>
     </header>
 
-    <!-- 系统卡片网格 -->
-    <section class="system-grid">
-      <article v-for="item in projects" :key="item.id" class="system-card" :class="`status-${item.status}`">
-        <!-- 卡片头部 -->
-        <div class="card-header">
-          <div class="card-header-left">
-            <span class="system-index">{{ item.id }}</span>
-            <h3 class="system-name">{{ item.name }}</h3>
-          </div>
-          <div class="card-header-right">
-            <t-tag size="small" :theme="statusMeta(item.status).theme" variant="light">{{ statusMeta(item.status).label }}</t-tag>
-          </div>
+    <!-- ====== 卡片网格 ====== -->
+    <section class="card-grid">
+      <article
+        v-for="item in projects" :key="item.id"
+        class="card" :class="[`card--${item.status}`, item.lifecycle !== 'active' ? `card--${item.lifecycle}` : '']">
+
+        <!-- 头部行 -->
+        <div class="card-head">
+          <span class="card-num">{{ item.id }}</span>
+          <h3 class="card-title">{{ item.name }}</h3>
+          <t-tag class="card-status-tag" size="small" :theme="statusMeta(item.status).theme" variant="light">{{ statusMeta(item.status).label }}</t-tag>
         </div>
 
-        <!-- 实现方式与技术标签 -->
-        <div class="impl-row">
-          <span class="impl-badge">{{ item.implementation }}</span>
-          <span v-for="tech in item.techStack" :key="tech" class="tech-badge">{{ tech }}</span>
-          <span v-if="item.lifecycle === 'legacy'" class="lifecycle-badge legacy">计划替代</span>
-          <span v-else-if="item.lifecycle === 'replacement'" class="lifecycle-badge replacement">新版实现</span>
+        <!-- 技术标签行 -->
+        <div class="tag-row">
+          <span class="tag tag--impl">{{ item.implementation }}</span>
+          <span v-for="t in item.techStack" :key="t" class="tag">{{ t }}</span>
+          <span v-if="item.lifecycle==='legacy'" class="tag tag--legacy">计划替代</span>
+          <span v-else-if="item.lifecycle==='replacement'" class="tag tag--new">新版实现</span>
         </div>
 
         <!-- 描述 -->
-        <p class="description">{{ item.description }}</p>
+        <p class="card-desc">{{ item.description }}</p>
 
-        <!-- 访问地址列表 -->
-        <div class="urls-section" v-if="item.ports">
-          <div class="url-group">
-            <span class="url-label">🖥 PC端</span>
-            <a v-for="url in pcUrls(item)" :key="url" :href="url" target="_blank" rel="noopener noreferrer" class="url-link" :class="{ highlight: isHighlightUrl(url) }">{{ url }}</a>
+        <!-- URL区域 -->
+        <div class="card-urls" v-if="item.ports">
+          <!-- PC端 -->
+          <div class="url-block">
+            <span class="url-icon" title="PC端">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+              PC端
+            </span>
+            <div class="url-list">
+              <a v-for="u in pcUrls(item)" :key="u" :href="u" target="_blank" class="url" :class="{ 'url--lan': isLanHighlight(u) }">{{ u }}</a>
+            </div>
           </div>
-          <div class="url-group" v-if="item.mobileEntry">
-            <span class="url-label">📱 移动端</span>
-            <a v-for="url in mobileUrls(item)" :key="url" :href="url" target="_blank" rel="noopener noreferrer" class="url-link" :class="{ highlight: isHighlightUrl(url) }">{{ url }}</a>
+          <!-- 移动端 -->
+          <div class="url-block" v-if="item.mobileEntry">
+            <span class="url-icon" title="移动端">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="2" width="14" height="20" rx="3"/><path d="M12 18h.01"/></svg>
+              移动端
+            </span>
+            <div class="url-list">
+              <a v-for="u in mobileUrls(item)" :key="u" :href="u" target="_blank" class="url" :class="{ 'url--lan': isLanHighlight(u) }">{{ u }}</a>
+            </div>
           </div>
         </div>
-        <div class="urls-section urls-empty" v-else>
-          <span class="url-label">服务未启动，无可用地址</span>
+        <div class="card-urls card-urls--empty" v-else>
+          <span>服务未启动，无可用地址</span>
         </div>
 
-        <!-- 底部操作栏 -->
-        <div class="card-footer">
-          <button class="action-link" @click="showLogs(item)">日志</button>
-          <div class="card-footer-actions">
+        <!-- 底部操作 -->
+        <div class="card-foot">
+          <button class="foot-link" @click="showLogs(item)">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+            日志
+          </button>
+          <div class="foot-actions">
             <t-button
               v-if="['healthy','external','starting'].includes(item.status) && item.managed"
               theme="danger" size="small" variant="base"
               :loading="busyId===item.id && busyAction==='stop'"
               :disabled="busyId===item.id && busyAction!=='stop'"
-              @click="projectAction(item,'stop')">停止服务</t-button>
+              @click="projectAction(item,'stop')">
+              <template #icon><svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1"/></svg></template>
+              停止服务
+            </t-button>
             <t-button
               v-else
               theme="primary" size="small" variant="base"
               :loading="busyId===item.id && busyAction==='start'"
               :disabled="['healthy','external','starting'].includes(item.status) || busyId===item.id"
-              @click="projectAction(item,'start')">启动服务</t-button>
-            <button class="action-link" :disabled="!item.url" @click="openProject(item)">打开系统</button>
-            <button class="action-link" @click="showDetail(item)">详情</button>
+              @click="projectAction(item,'start')">
+              <template #icon><svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></template>
+              启动服务
+            </t-button>
+            <button class="foot-link" :disabled="!item.url" @click="openProject(item)">打开系统</button>
+            <button class="foot-link" @click="showDetail(item)">详情</button>
           </div>
         </div>
 
-        <!-- 提示 -->
-        <p v-if="item.status==='external'" class="hint">该服务不是由当前门户启动，门户不会强制停止它。</p>
-        <p v-if="item.status==='conflict'" class="hint danger">端口有其他程序响应，但不是可识别的本项目服务。</p>
+        <!-- 提示条 -->
+        <div v-if="item.status==='external'" class="card-hint warn">该服务不是由当前门户启动，门户不会强制停止它。</div>
+        <div v-if="item.status==='conflict'" class="card-hint error">端口有其他程序响应，但不是可识别的本项目服务。</div>
       </article>
     </section>
 
-    <!-- 日志弹窗 -->
-    <t-dialog v-model:visible="logDialog.visible" :header="`${logDialog.name} · 运行日志`" width="880px" :footer="false">
-      <pre class="log-view">{{ logDialog.lines.length ? logDialog.lines.join('\n') : '暂无日志。项目可能尚未由本门户启动。' }}</pre>
+    <!-- ====== 日志弹窗 ====== -->
+    <t-dialog v-model:visible="logDialog.visible" :header="`${logDialog.name} · 运行日志`" width="900px" :footer="false">
+      <pre class="log-pre">{{ logDialog.lines.length ? logDialog.lines.join('\n') : '暂无日志。项目可能尚未由本门户启动。' }}</pre>
     </t-dialog>
 
-    <!-- 详情弹窗 -->
+    <!-- ====== 详情弹窗 ====== -->
     <t-dialog v-model:visible="detailDialog.visible" :header="`${detailDialog.item?.name || ''} · 项目详情`" width="640px" :footer="false">
-      <div v-if="detailDialog.item" class="detail-content">
-        <dl class="detail-list">
+      <div v-if="detailDialog.item" class="detail-body">
+        <dl class="dl">
           <div><dt>编号</dt><dd>{{ detailDialog.item.id }}</dd></div>
           <div><dt>实现方式</dt><dd>{{ detailDialog.item.implementation }}</dd></div>
           <div><dt>项目目录</dt><dd>{{ detailDialog.item.folder }}</dd></div>
@@ -129,6 +149,7 @@
   </main>
 </template>
 
+<!-- ================================================================ -->
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { MessagePlugin } from 'tdesign-vue-next'
@@ -144,609 +165,314 @@ const logDialog = reactive({ visible: false, name: '', lines: [] })
 const detailDialog = reactive({ visible: false, item: null })
 let timer
 
-/* ---------- LAN IP 列表 ---------- */
+/* ---- LAN IP ---- */
 const lanIPs = ref([])
-async function detectLanIPs() {
-  try {
-    const data = await api('/api/network-info')
-    lanIPs.value = data.ips || []
-  } catch {
-    // 如果接口不支持，用常见局域网 IP 做后备
-    lanIPs.value = []
-  }
-}
 
-/* ---------- 计算属性 ---------- */
-const healthyCount = computed(() => projects.value.filter(item => ['healthy', 'external'].includes(item.status)).length)
-const dockerText = computed(() => infrastructure.docker?.running
-  ? `运行中${infrastructure.docker.version ? ` · ${infrastructure.docker.version}` : ''}`
-  : infrastructure.docker?.installed ? '已安装，尚未运行' : '未检测到安装')
+/* ---- 计算 ---- */
+const healthyCount = computed(() => projects.value.filter(i => ['healthy', 'external'].includes(i.status)).length)
+const dockerShortText = computed(() =>
+  infrastructure.docker?.running
+    ? `运行中${infrastructure.docker.version ? ' · ' + infrastructure.docker.version : ''}`
+    : infrastructure.docker?.installed ? '已安装，尚未运行' : '未检测到')
 
-/* ---------- URL 构建 ---------- */
-function buildUrls(item, entryPath) {
+/* ---- URL ---- */
+function buildUrls(item, entry) {
   if (!item.ports) return []
-  const port = item.ports.webPort
-  const urls = [`http://127.0.0.1:${port}${entryPath}`]
-  for (const ip of lanIPs.value) {
-    urls.push(`http://${ip}:${port}${entryPath}`)
-  }
-  return urls
+  const p = item.ports.webPort
+  const list = [`http://127.0.0.1:${p}${entry}`]
+  for (const ip of lanIPs.value) list.push(`http://${ip}:${p}${entry}`)
+  return list
+}
+function pcUrls(item) { return buildUrls(item, item.entry || '/') }
+function mobileUrls(item) { return item.mobileEntry ? buildUrls(item, item.mobileEntry) : [] }
+function isLanHighlight(url) { return url.includes('192.168.') }
+
+/* ---- Infra ---- */
+function assignInfra(v = {}) {
+  Object.assign(infrastructure.docker, v.docker || {})
+  Object.assign(infrastructure.postgres, v.postgres || {})
+  Object.assign(infrastructure.nocodb, v.nocodb || {})
 }
 
-function pcUrls(item) {
-  return buildUrls(item, item.entry || '/')
+/* ---- API ---- */
+async function api(url, opts = {}) {
+  const r = await fetch(url, { ...opts, headers: { 'Content-Type': 'application/json', ...(opts.method === 'POST' ? { 'X-Portal-Token': token.value } : {}), ...opts.headers } })
+  const b = await r.json().catch(() => ({ message: '服务返回格式错误' }))
+  if (!r.ok) throw new Error(b.message || `HTTP ${r.status}`)
+  return b
 }
 
-function mobileUrls(item) {
-  if (!item.mobileEntry) return []
-  return buildUrls(item, item.mobileEntry)
-}
-
-function isHighlightUrl(url) {
-  return url.includes('192.168.')
-}
-
-/* ---------- 基础设施 ---------- */
-function assignInfrastructure(value = {}) {
-  Object.assign(infrastructure.docker, value.docker || {})
-  Object.assign(infrastructure.postgres, value.postgres || {})
-  Object.assign(infrastructure.nocodb, value.nocodb || {})
-}
-
-/* ---------- API 工具 ---------- */
-async function api(url, options = {}) {
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(options.method === 'POST' ? { 'X-Portal-Token': token.value } : {}),
-      ...options.headers
-    }
-  })
-  const body = await response.json().catch(() => ({ message: '服务返回格式错误' }))
-  if (!response.ok) throw new Error(body.message || `HTTP ${response.status}`)
-  return body
-}
-
-/* ---------- 初始化 ---------- */
+/* ---- bootstrap ---- */
 async function bootstrap() {
-  const data = await api('/api/bootstrap')
-  token.value = data.token
-  projects.value = data.projects
-  assignInfrastructure(data.infrastructure)
-  if (data.lanIPs) {
-    lanIPs.value = data.lanIPs
-  }
+  const d = await api('/api/bootstrap')
+  token.value = d.token
+  projects.value = d.projects
+  assignInfra(d.infrastructure)
+  if (d.lanIPs) lanIPs.value = d.lanIPs
 }
 
-/* ---------- 刷新 ---------- */
+async function detectLanIPs() {
+  try { lanIPs.value = (await api('/api/network-info')).ips || [] } catch { /* ignore */ }
+}
+
+/* ---- 刷新 ---- */
 async function refreshStatus(silent = false) {
   if (refreshing.value) return
   refreshing.value = true
-  try {
-    const data = await api('/api/status')
-    projects.value = data.projects
-    assignInfrastructure(data.infrastructure)
-  } catch (error) { if (!silent) MessagePlugin.error(error.message) }
+  try { const d = await api('/api/status'); projects.value = d.projects; assignInfra(d.infrastructure) }
+  catch (e) { if (!silent) MessagePlugin.error(e.message) }
   finally { refreshing.value = false }
 }
 
-/* ---------- 项目操作 ---------- */
+/* ---- 项目操作 ---- */
 async function projectAction(item, action) {
-  busyId.value = item.id
-  busyAction.value = action
+  busyId.value = item.id; busyAction.value = action
   try {
-    const data = await api(`/api/projects/${item.id}/${action}`, { method: 'POST', body: '{}' })
-    const index = projects.value.findIndex(project => project.id === item.id)
-    if (index >= 0) projects.value[index] = data.project
+    const d = await api(`/api/projects/${item.id}/${action}`, { method: 'POST', body: '{}' })
+    const i = projects.value.findIndex(p => p.id === item.id)
+    if (i >= 0) projects.value[i] = d.project
     MessagePlugin.success(action === 'start' ? '服务启动成功' : '服务已停止')
-  } catch (error) { MessagePlugin.error(error.message); await refreshStatus(true) }
+  } catch (e) { MessagePlugin.error(e.message); await refreshStatus(true) }
   finally { busyId.value = ''; busyAction.value = '' }
 }
 
-/* ---------- 批量启停 ---------- */
-async function startAll() {
-  for (const item of projects.value) {
-    if (!['healthy', 'external', 'starting'].includes(item.status)) {
-      await projectAction(item, 'start')
-    }
-  }
-}
+async function startAll() { for (const i of projects.value) if (!['healthy', 'external', 'starting'].includes(i.status)) await projectAction(i, 'start') }
+async function stopAll() { for (const i of projects.value) if (i.managed) await projectAction(i, 'stop') }
 
-async function stopAll() {
-  for (const item of projects.value) {
-    if (item.managed) {
-      await projectAction(item, 'stop')
-    }
-  }
-}
-
-/* ---------- Docker ---------- */
 async function startDocker() {
   dockerStarting.value = true
-  try {
-    const data = await api('/api/infrastructure/docker/start', { method: 'POST', body: '{}' })
-    assignInfrastructure(data.infrastructure)
-    MessagePlugin.success('已请求启动 Docker Desktop，请稍候')
-  } catch (error) { MessagePlugin.error(error.message) }
+  try { assignInfra((await api('/api/infrastructure/docker/start', { method: 'POST', body: '{}' })).infrastructure); MessagePlugin.success('已请求启动 Docker Desktop') }
+  catch (e) { MessagePlugin.error(e.message) }
   finally { dockerStarting.value = false }
 }
 
-/* ---------- 项目打开 ---------- */
-function openProject(item) {
-  if (item.url) window.open(item.url, '_blank', 'noopener,noreferrer')
-}
+function openProject(item) { if (item.url) window.open(item.url, '_blank', 'noopener,noreferrer') }
 
-/* ---------- 日志 ---------- */
 async function showLogs(item) {
-  logDialog.name = item.name
-  logDialog.visible = true
-  try { logDialog.lines = (await api(`/api/projects/${item.id}/logs?tail=160`)).lines }
-  catch (error) { logDialog.lines = [error.message] }
+  logDialog.name = item.name; logDialog.visible = true
+  try { logDialog.lines = (await api(`/api/projects/${item.id}/logs?tail=200`)).lines }
+  catch (e) { logDialog.lines = [e.message] }
 }
 
-/* ---------- 详情 ---------- */
-function showDetail(item) {
-  detailDialog.item = item
-  detailDialog.visible = true
-}
+function showDetail(item) { detailDialog.item = item; detailDialog.visible = true }
 
-/* ---------- 状态映射 ---------- */
-function statusMeta(status) {
-  return {
+function statusMeta(s) {
+  return ({
     healthy: { label: '运行中', theme: 'success' },
     external: { label: '外部运行', theme: 'warning' },
     starting: { label: '启动中', theme: 'primary' },
     conflict: { label: '端口冲突', theme: 'danger' },
     exited: { label: '已退出', theme: 'danger' },
     stopped: { label: '未启动', theme: 'default' }
-  }[status] || { label: status || '未知', theme: 'default' }
+  })[s] || { label: s || '未知', theme: 'default' }
 }
 
-/* ---------- 生命周期 ---------- */
 onMounted(async () => {
-  try { await bootstrap() } catch (error) { MessagePlugin.error(error.message) }
+  try { await bootstrap() } catch (e) { MessagePlugin.error(e.message) }
   await detectLanIPs()
-  timer = setInterval(() => refreshStatus(true), 3500)
+  timer = setInterval(() => refreshStatus(true), 4000)
 })
 onBeforeUnmount(() => clearInterval(timer))
 </script>
 
+<!-- ================================================================ -->
 <style scoped>
-/* ========== 全局基础 ========== */
+/* ===== 全局重置 ===== */
 :global(*) { box-sizing: border-box; margin: 0; padding: 0; }
 :global(body) {
-  margin: 0;
-  background: #f0f2f5;
-  color: #1d2129;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-  font-size: 14px;
-  line-height: 1.5;
+  background: #f5f7fa;
+  color: #1f2733;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 13px;
   -webkit-font-smoothing: antialiased;
 }
-.portal-page {
-  min-height: 100vh;
-  background: #f0f2f5;
-}
+.portal-page { min-height: 100vh; }
 
-/* ========== 顶部导航栏 ========== */
+/* ===== 顶栏 ===== */
 .top-bar {
-  position: sticky;
-  top: 0;
-  z-index: 100;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  height: 56px;
-  padding: 0 24px;
-  background: #fff;
-  border-bottom: 1px solid #e5e6eb;
-  box-shadow: 0 1px 4px rgba(0,0,0,.06);
+  position: sticky; top: 0; z-index: 100;
+  display: flex; align-items: center; justify-content: space-between;
+  height: 52px; padding: 0 20px;
+  background: #fff; border-bottom: 1px solid #e4e7ed;
+  box-shadow: 0 1px 3px rgba(0,21,41,.05);
 }
-.top-bar-left {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  flex-shrink: 0;
-}
-.logo-area {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.logo-icon {
-  font-size: 22px;
-  color: #3370ff;
-}
-.logo-text {
-  font-size: 16px;
-  font-weight: 700;
-  color: #1d2129;
-  white-space: nowrap;
-}
-.summary-pills {
-  display: flex;
-  gap: 8px;
-}
-.summary-pill {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 12px;
-  border-radius: 4px;
-  background: #f2f3f5;
-  font-size: 13px;
-  white-space: nowrap;
-}
-.summary-pill.accent {
-  background: #e8f3ff;
-  color: #3370ff;
-}
-.summary-pill.accent strong { color: #3370ff; }
-.summary-pill strong {
-  font-weight: 600;
-  color: #4e5969;
-}
-.summary-pill span {
-  padding: 2px 6px;
-  background: #fff;
-  border-radius: 10px;
-  font-weight: 700;
-  font-size: 13px;
-  color: #1d2129;
-  min-width: 22px;
-  text-align: center;
-}
+.top-bar-left { display: flex; align-items: center; gap: 16px; flex-shrink: 0; }
+.logo-area { display: flex; align-items: center; gap: 7px; }
+.logo-svg { flex-shrink: 0; }
+.logo-text { font-size: 15px; font-weight: 700; color: #1f2733; white-space: nowrap; letter-spacing: -.3px; }
 
-/* ---------- 基础设施芯片 ---------- */
-.top-bar-center {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex: 1;
-  justify-content: center;
+.summary-pills { display: flex; gap: 6px; }
+.pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 10px 3px 8px; border-radius: 12px;
+  font-size: 12px; white-space: nowrap;
+  background: #f2f3f5; color: #4e5969;
 }
+.pill b { font-weight: 600; }
+.pill em { font-style: normal; font-weight: 800; padding: 1px 6px; border-radius: 8px; background: #fff; color: #1f2733; font-size: 12px; }
+.pill-running { background: #e8f7ee; color: #00874a; }
+.pill-running em { color: #00874a; }
+.pill-dot { width: 7px; height: 7px; border-radius: 50%; }
+.pill-dot.running { background: #00b42a; box-shadow: 0 0 0 2px rgba(0,180,42,.2); }
+.pill-dot.total { background: #86909c; }
+
+.top-bar-center { display: flex; align-items: center; gap: 10px; flex: 1; justify-content: center; }
 .infra-chip {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 14px;
-  border-radius: 6px;
-  background: #f7f8fa;
-  border: 1px solid #e5e6eb;
-  font-size: 12px;
-  white-space: nowrap;
-  transition: all .2s;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 12px; border-radius: 20px;
+  background: #f7f8fa; border: 1px solid #e5e6eb;
+  font-size: 12px; white-space: nowrap; transition: .2s;
 }
-.infra-chip.up {
-  background: #e8ffea;
-  border-color: #b7eb8f;
+.infra-chip.up { background: #e8f7ee; border-color: #a9e5bb; }
+.chip-dot { width: 7px; height: 7px; border-radius: 50%; background: #c9cdd4; flex-shrink: 0; }
+.infra-chip.up .chip-dot { background: #00b42a; box-shadow: 0 0 0 2px rgba(0,180,42,.2); }
+.infra-chip b { font-weight: 600; color: #1f2733; font-size: 12px; }
+.infra-chip small { color: #86909c; }
+.chip-btn {
+  padding: 1px 7px; margin-left: 2px; border: 1px solid #3370ff; border-radius: 3px;
+  background: transparent; color: #3370ff; font-size: 11px; cursor: pointer; transition: .15s;
 }
-.chip-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #c9cdd4;
-  flex-shrink: 0;
-}
-.infra-chip.up .chip-dot {
-  background: #00b42a;
-  box-shadow: 0 0 0 3px rgba(0,180,42,.15);
-}
-.infra-chip strong {
-  font-weight: 600;
-  color: #1d2129;
-}
-.infra-chip small {
-  color: #86909c;
-  margin-left: 2px;
-}
-.chip-action {
-  margin-left: 4px;
-  padding: 2px 8px;
-  border: 1px solid #3370ff;
-  border-radius: 3px;
-  background: #fff;
-  color: #3370ff;
-  font-size: 11px;
-  cursor: pointer;
-  transition: all .15s;
-}
-.chip-action:hover { background: #3370ff; color: #fff; }
-.chip-action:disabled { opacity: .5; cursor: not-allowed; }
+.chip-btn:hover { background: #3370ff; color: #fff; }
+.chip-btn:disabled { opacity: .45; cursor: default; }
 
-/* ---------- 右侧工具栏 ---------- */
-.top-bar-right {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
+.top-bar-right { display: flex; gap: 4px; flex-shrink: 0; }
+.tb-icon {
+  display: grid; place-items: center; width: 30px; height: 30px;
+  border: 1px solid #e5e6eb; border-radius: 50%; background: #fff;
+  color: #4e5969; cursor: pointer; transition: .15s;
 }
-.icon-btn {
-  width: 32px;
-  height: 32px;
-  display: grid;
-  place-items: center;
-  border: 1px solid #e5e6eb;
-  border-radius: 6px;
-  background: #fff;
-  color: #4e5969;
-  font-size: 16px;
-  cursor: pointer;
-  transition: all .15s;
-}
-.icon-btn:hover { border-color: #3370ff; color: #3370ff; background: #f0f5ff; }
-.icon-btn:disabled { opacity: .4; cursor: not-allowed; }
+.tb-icon:hover { border-color: #3370ff; color: #3370ff; background: #f0f5ff; }
+.tb-icon:disabled { opacity: .35; cursor: default; }
 
-/* ========== 系统卡片网格 ========== */
-.system-grid {
+/* ===== 卡片网格 ===== */
+.card-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
+  gap: 14px;
   max-width: 1800px;
   margin: 0 auto;
-  padding: 20px 24px;
+  padding: 16px 20px 24px;
 }
 
-/* ========== 单张系统卡片 ========== */
-.system-card {
-  position: relative;
-  display: flex;
-  flex-direction: column;
+/* ===== 单张卡片 ===== */
+.card {
+  display: flex; flex-direction: column;
   background: #fff;
-  border: 1px solid #e5e6eb;
+  border: 1px solid #e4e7ed;
   border-radius: 8px;
-  padding: 16px 18px 14px;
-  box-shadow: 0 1px 3px rgba(0,0,0,.04);
-  transition: box-shadow .2s, transform .2s, border-color .2s;
-  overflow: hidden;
+  padding: 14px 16px 12px;
+  border-top: 3px solid #d9d9d9;
+  box-shadow: 0 1px 2px rgba(0,0,0,.04);
+  transition: box-shadow .2s, transform .18s;
 }
-.system-card::before {
-  content: '';
-  position: absolute;
-  top: 0; left: 0; right: 0;
-  height: 3px;
-  background: #c9cdd4;
-  border-radius: 8px 8px 0 0;
-}
-.system-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(0,0,0,.1);
-  border-color: #bedaff;
-}
-.system-card.status-healthy::before { background: #00b42a; }
-.system-card.status-external::before { background: #ff7d00; }
-.system-card.status-starting::before { background: #3370ff; }
-.system-card.status-conflict::before,
-.system-card.status-exited::before { background: #f53f3f; }
+.card:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,21,41,.08); }
+.card--healthy { border-top-color: #00b42a; }
+.card--external { border-top-color: #ff7d00; }
+.card--starting { border-top-color: #3370ff; }
+.card--conflict, .card--exited { border-top-color: #f53f3f; }
 
-/* ---------- 卡片头部 ---------- */
-.card-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 8px;
+/* 头部 */
+.card-head { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; }
+.card-num {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 26px; height: 22px; padding: 0 5px;
+  background: #e8f3ff; color: #3370ff;
+  font-size: 12px; font-weight: 800; border-radius: 4px; flex-shrink: 0;
 }
-.card-header-left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-.system-index {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 28px;
-  height: 24px;
-  padding: 0 6px;
-  background: #e8f3ff;
-  color: #3370ff;
-  font-weight: 800;
-  font-size: 13px;
-  border-radius: 4px;
-  flex-shrink: 0;
-}
-.system-name {
-  font-size: 15px;
-  font-weight: 700;
-  color: #1d2129;
-  line-height: 1.4;
-  margin: 0;
-}
-.card-header-right {
-  flex-shrink: 0;
-}
+.card-title { flex: 1; font-size: 14px; font-weight: 700; color: #1f2733; line-height: 1.3; }
+.card-status-tag { flex-shrink: 0; }
 
-/* ---------- 实现方式与技术标签 ---------- */
-.impl-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-  margin-bottom: 8px;
+/* 标签行 */
+.tag-row { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
+.tag {
+  padding: 1px 6px; border-radius: 3px;
+  background: #f2f3f5; color: #86909c;
+  font-size: 11px; line-height: 18px; white-space: nowrap;
 }
-.impl-badge {
-  padding: 2px 8px;
-  background: #f2f3f5;
-  color: #4e5969;
-  font-size: 11px;
-  border-radius: 3px;
-  border: 1px solid #e5e6eb;
-}
-.tech-badge {
-  padding: 2px 6px;
-  background: #f7f8fa;
-  color: #86909c;
-  font-size: 11px;
-  border-radius: 3px;
-}
-.lifecycle-badge {
-  padding: 2px 8px;
-  font-size: 11px;
-  font-weight: 600;
-  border-radius: 3px;
-}
-.lifecycle-badge.legacy {
-  background: #fff7e8;
-  color: #d46b08;
-  border: 1px solid #ffd591;
-}
-.lifecycle-badge.replacement {
-  background: #e8ffea;
-  color: #0e8c38;
-  border: 1px solid #95de64;
-}
+.tag--impl { background: #e8ecf4; color: #4e5969; font-weight: 500; }
+.tag--legacy { background: #fff7e8; color: #d46b08; border: 1px solid #ffe0a8; font-weight: 600; }
+.tag--new { background: #e8f7ee; color: #0e8c38; border: 1px solid #a9e5bb; font-weight: 600; }
 
-/* ---------- 描述 ---------- */
-.description {
-  margin: 0 0 10px;
-  color: #4e5969;
-  font-size: 12px;
-  line-height: 1.7;
-  min-height: 38px;
-}
+/* 描述 */
+.card-desc { color: #4e5969; font-size: 12px; line-height: 1.7; margin-bottom: 8px; min-height: 34px; }
 
-/* ---------- URL 列表区域 ---------- */
-.urls-section {
-  flex: 1;
-  margin-bottom: 10px;
-  padding: 8px 10px;
-  background: #fafbfc;
-  border: 1px solid #f0f1f3;
-  border-radius: 6px;
-  min-height: 60px;
+/* URL区域 */
+.card-urls {
+  flex: 1; margin-bottom: 8px;
+  padding: 8px 10px; border-radius: 6px;
+  background: #fafbfd; border: 1px solid #f0f1f3;
+  min-height: 56px;
 }
-.urls-empty {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #c9cdd4;
-  font-size: 12px;
+.card-urls--empty {
+  display: flex; align-items: center; justify-content: center;
+  color: #c9cdd4; font-size: 12px;
 }
-.url-group {
-  margin-bottom: 6px;
+.url-block { margin-bottom: 5px; }
+.url-block:last-child { margin-bottom: 0; }
+.url-icon {
+  display: inline-flex; align-items: center; gap: 4px;
+  color: #86909c; font-size: 11px; font-weight: 600;
+  margin-bottom: 2px;
 }
-.url-group:last-child { margin-bottom: 0; }
-.url-label {
-  display: block;
-  color: #86909c;
-  font-size: 11px;
-  font-weight: 600;
-  margin-bottom: 3px;
+.url-icon svg { color: #86909c; }
+.url-list { padding-left: 18px; }
+.url {
+  display: block; color: #3370ff; font-size: 12px; line-height: 1.7;
+  text-decoration: none; word-break: break-all; transition: color .12s;
 }
-.url-link {
-  display: block;
-  padding: 1px 0;
-  color: #3370ff;
-  font-size: 12px;
-  text-decoration: none;
-  word-break: break-all;
-  line-height: 1.6;
-  transition: color .15s;
-}
-.url-link:hover {
-  color: #1d59d4;
-  text-decoration: underline;
-}
-.url-link.highlight {
-  color: #f53f3f;
-}
+.url:hover { color: #1d59d4; text-decoration: underline; }
+.url--lan { color: #f53f3f; }
+.url--lan:hover { color: #c5292e; }
 
-/* ---------- 卡片底部操作栏 ---------- */
-.card-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding-top: 10px;
-  border-top: 1px solid #f2f3f5;
-  margin-top: auto;
+/* 底部操作 */
+.card-foot {
+  display: flex; align-items: center; justify-content: space-between;
+  padding-top: 8px; border-top: 1px solid #f2f3f5; margin-top: auto;
 }
-.card-footer-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.foot-actions { display: flex; align-items: center; gap: 8px; }
+.foot-link {
+  display: inline-flex; align-items: center; gap: 3px;
+  background: none; border: none; color: #3370ff; font-size: 13px;
+  cursor: pointer; padding: 3px 0; transition: color .12s;
 }
-.action-link {
-  background: none;
-  border: none;
-  color: #3370ff;
-  font-size: 13px;
-  cursor: pointer;
-  padding: 4px 2px;
-  transition: color .15s;
-}
-.action-link:hover { color: #1d59d4; text-decoration: underline; }
-.action-link:disabled { color: #c9cdd4; cursor: not-allowed; text-decoration: none; }
+.foot-link svg { flex-shrink: 0; }
+.foot-link:hover { color: #1d59d4; text-decoration: underline; }
+.foot-link:disabled { color: #c9cdd4; cursor: default; text-decoration: none; }
 
-/* ---------- 提示 ---------- */
-.hint {
-  margin-top: 6px;
-  padding: 5px 8px;
-  background: #fffbe6;
-  color: #d46b08;
-  font-size: 11px;
-  border-radius: 4px;
-  line-height: 1.5;
+/* 提示条 */
+.card-hint {
+  margin-top: 6px; padding: 4px 8px; border-radius: 4px;
+  font-size: 11px; line-height: 1.5;
 }
-.hint.danger {
-  background: #fff1f0;
-  color: #cf1322;
-}
+.card-hint.warn { background: #fffbe6; color: #d48806; }
+.card-hint.error { background: #fff1f0; color: #cf1322; }
 
-/* ---------- 日志弹窗 ---------- */
-.log-view {
-  max-height: 520px;
-  margin: 0;
-  padding: 16px;
-  overflow: auto;
-  background: #1d2129;
-  color: #c9d1d9;
+/* 日志 */
+.log-pre {
+  max-height: 520px; margin: 0; padding: 14px 16px; overflow: auto;
+  background: #1e1e2e; color: #cdd6f4; border-radius: 6px;
   font: 12px/1.7 "Cascadia Code", Consolas, "Courier New", monospace;
-  white-space: pre-wrap;
-  word-break: break-all;
-  border-radius: 6px;
+  white-space: pre-wrap; word-break: break-all;
 }
 
-/* ---------- 详情弹窗 ---------- */
-.detail-content {
-  padding: 4px 0;
+/* 详情 */
+.dl div {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  gap: 12px; padding: 7px 0; border-bottom: 1px dashed #f0f1f3; font-size: 13px;
 }
-.detail-list div {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 16px;
-  padding: 8px 0;
-  border-bottom: 1px dashed #f0f1f3;
-  font-size: 13px;
-}
-.detail-list div:last-child { border-bottom: none; }
-.detail-list dt {
-  color: #86909c;
-  flex-shrink: 0;
-  min-width: 72px;
-}
-.detail-list dd {
-  color: #1d2129;
-  text-align: right;
-  margin: 0;
-}
+.dl div:last-child { border-bottom: none; }
+.dl dt { color: #86909c; flex-shrink: 0; min-width: 68px; }
+.dl dd { color: #1f2733; text-align: right; margin: 0; }
 
-/* ========== 响应式 ========== */
-@media (max-width: 1500px) {
-  .system-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-}
+/* ===== 响应式 ===== */
+@media (max-width: 1500px) { .card-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 1100px) {
-  .system-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .top-bar { flex-wrap: wrap; height: auto; padding: 10px 16px; }
+  .card-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .top-bar { flex-wrap: wrap; height: auto; padding: 8px 14px; gap: 8px; }
   .top-bar-center { order: 3; width: 100%; justify-content: flex-start; flex-wrap: wrap; }
 }
 @media (max-width: 700px) {
-  .system-grid { grid-template-columns: 1fr; padding: 12px; }
+  .card-grid { grid-template-columns: 1fr; padding: 10px; }
   .top-bar-center { display: none; }
-  .summary-pills { display: none; }
 }
 </style>
