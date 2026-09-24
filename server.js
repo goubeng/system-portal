@@ -2,8 +2,20 @@ const crypto=require('crypto')
 const fs=require('fs')
 const http=require('http')
 const net=require('net')
+const os=require('os')
 const path=require('path')
 const {execFile,spawn}=require('child_process')
+
+function getLanIPs(){
+  const result=[]
+  const interfaces=os.networkInterfaces()
+  for(const name of Object.keys(interfaces)){
+    for(const item of interfaces[name]){
+      if(item.family==='IPv4' && !item.internal && item.address!=='127.0.0.1')result.push(item.address)
+    }
+  }
+  return result
+}
 
 const root=__dirname
 const workspaceRoot=path.resolve(root,'..')
@@ -247,19 +259,20 @@ function authorizedMutation(req){
 }
 
 async function apiHandler(req,res,url){
+  if(req.method==='GET' && url.pathname==='/api/network-info')return send(res,200,{ips:getLanIPs()})
   if(req.method==='GET' && url.pathname==='/api/bootstrap'){
     const statuses=await Promise.all(projects.map(projectStatus))
-    return send(res,200,{token:csrfToken,projects:statuses,infrastructure:await infrastructureStatus(),portal:{host:portalHost,port:portalPort}})
+    return send(res,200,{token:csrfToken,projects:statuses,infrastructure:await infrastructureStatus(),portal:{host:portalHost,port:portalPort},lanIPs:getLanIPs()})
   }
   if(req.method==='GET' && url.pathname==='/api/status')return send(res,200,{projects:await Promise.all(projects.map(projectStatus)),infrastructure:await infrastructureStatus()})
-  const logMatch=url.pathname.match(/^\/api\/projects\/(\d{2})\/logs$/)
+  const logMatch=url.pathname.match(/^\/api\/projects\/(\d{2,3})\/logs$/)
   if(req.method==='GET' && logMatch){
     const tail=Math.min(300,Math.max(1,Number(url.searchParams.get('tail'))||120))
     if(!projectMap.has(logMatch[1]))return send(res,404,{message:'项目不存在'})
     return send(res,200,{lines:(logs.get(logMatch[1])||[]).slice(-tail)})
   }
   if(req.method==='POST' && !authorizedMutation(req))return send(res,403,{message:'请求校验失败，请刷新门户后重试'})
-  const actionMatch=url.pathname.match(/^\/api\/projects\/(\d{2})\/(start|stop)$/)
+  const actionMatch=url.pathname.match(/^\/api\/projects\/(\d{2,3})\/(start|stop)$/)
   if(req.method==='POST' && actionMatch){
     const project=projectMap.get(actionMatch[1])
     if(!project)return send(res,404,{message:'项目不存在'})
