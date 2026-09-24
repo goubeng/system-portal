@@ -38,11 +38,11 @@
         <button class="tb-action-btn tb-refresh" :disabled="refreshing" @click="refreshStatus">
           <refresh-icon /> 刷新状态
         </button>
-        <button class="tb-action-btn tb-start" @click="startAll">
-          <play-icon /> 全部启动
-        </button>
         <button class="tb-action-btn tb-stop" @click="stopAll">
           <stop-icon /> 全部停止
+        </button>
+        <button class="tb-action-btn tb-exit" @click="exitPortal">
+          <poweroff-icon /> 关闭平台
         </button>
       </div>
     </header>
@@ -91,6 +91,9 @@
               </span>
             </t-tooltip>
             <span class="tag tag--impl">{{ item.implementation }}</span>
+            <span class="tag tag--port" v-if="item.recommended?.webPort">
+              端口 {{ item.recommended.webPort }}{{ item.recommended.apiPort ? '/' + item.recommended.apiPort : '' }}
+            </span>
             <span v-for="t in item.techStack" :key="t" class="tag">{{ t }}</span>
           </div>
 
@@ -215,7 +218,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { MessagePlugin } from 'tdesign-vue-next'
-import { RefreshIcon, PlayIcon, StopIcon, HelpCircleIcon } from 'tdesign-icons-vue-next'
+import { RefreshIcon, PlayIcon, StopIcon, HelpCircleIcon, PoweroffIcon } from 'tdesign-icons-vue-next'
 
 const projects = ref([])
 const infrastructure = reactive({ docker: {}, postgres: {}, nocodb: {} })
@@ -347,8 +350,14 @@ async function projectAction(item, action) {
   finally { busyId.value = ''; busyAction.value = '' }
 }
 
-async function startAll() { for (const i of projects.value) if (!['healthy', 'external', 'starting'].includes(i.status)) await projectAction(i, 'start') }
 async function stopAll() { for (const i of projects.value) if (i.managed) await projectAction(i, 'stop') }
+
+async function exitPortal() {
+  try {
+    await api('/api/exit', { method: 'POST', body: '{}' })
+    MessagePlugin.success('集成平台服务已退出，您可以安全关闭此页面。')
+  } catch (e) { MessagePlugin.error(e.message) }
+}
 
 async function startDocker() {
   dockerStarting.value = true
@@ -488,6 +497,10 @@ onBeforeUnmount(() => clearInterval(timer))
 .tb-stop:hover { background: #ef4444; color: #fff; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(239,68,68,0.2); }
 .tb-stop:active { transform: translateY(0); }
 
+.tb-exit { background: rgba(245,158,11,0.15); color: #fbbf24; border-color: rgba(245,158,11,0.3); }
+.tb-exit:hover { background: #f59e0b; color: #fff; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(245,158,11,0.2); }
+.tb-exit:active { transform: translateY(0); }
+
 /* ===== 卡片网格 ===== */
 .card-grid {
   display: grid;
@@ -574,6 +587,7 @@ onBeforeUnmount(() => clearInterval(timer))
   font-size: 12px; line-height: 1.5; white-space: nowrap; font-weight: 400;
 }
 .tag--impl { background: #e7e8eb; color: rgba(0,0,0,0.9); font-weight: 500; }
+.tag--port { background: #e0ebff; color: #0052d9; font-weight: 600; }
 
 /* 描述 */
 .card-desc { color: rgba(0,0,0,0.6); font-size: 13px; font-weight: 400; line-height: 1.6; margin-bottom: 16px; min-height: 40px; }

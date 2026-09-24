@@ -281,6 +281,11 @@ async function apiHandler(req,res,url){
     return send(res,200,{project:result})
   }
   if(req.method==='POST' && url.pathname==='/api/infrastructure/docker/start')return send(res,200,{infrastructure:await startDocker()})
+  if(req.method==='POST' && url.pathname==='/api/exit') {
+    send(res, 200, { message: '集成平台服务已退出' })
+    setTimeout(() => process.exit(0), 1000)
+    return
+  }
   return send(res,404,{message:'接口不存在'})
 }
 
