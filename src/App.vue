@@ -4,17 +4,6 @@
     <header class="top-bar">
       <div class="top-bar-left">
         <div class="logo-area">
-          <svg class="logo-svg" viewBox="0 0 24 24" width="28" height="28">
-            <circle cx="12" cy="12" r="10" fill="url(#logo-grad)"/>
-            <circle cx="12" cy="12" r="4" fill="#fff"/>
-            <path d="M12 2v4M12 18v4M2 12h4M18 12h4" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/>
-            <defs>
-              <linearGradient id="logo-grad" x1="0" y1="0" x2="24" y2="24" gradientUnits="userSpaceOnUse">
-                <stop stop-color="#3b82f6"/>
-                <stop offset="1" stop-color="#6366f1"/>
-              </linearGradient>
-            </defs>
-          </svg>
           <span class="logo-text">系统启动集成平台</span>
         </div>
         <div class="summary-pills">
@@ -43,128 +32,143 @@
         </div>
       </div>
       <div class="top-bar-right">
-        <button class="tb-icon" title="刷新状态" :disabled="refreshing" @click="refreshStatus"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 4v6h6M23 20v-6h-6"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg></button>
-        <button class="tb-icon tb-icon-primary" title="全部启动" @click="startAll"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button>
-        <button class="tb-icon tb-icon-danger" title="全部停止" @click="stopAll"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg></button>
+        <button class="tb-action-btn tb-help" @click="helpDialogVisible = true">
+          <help-circle-icon /> 帮助
+        </button>
+        <button class="tb-action-btn tb-refresh" :disabled="refreshing" @click="refreshStatus">
+          <refresh-icon /> 刷新状态
+        </button>
+        <button class="tb-action-btn tb-start" @click="startAll">
+          <play-icon /> 全部启动
+        </button>
+        <button class="tb-action-btn tb-stop" @click="stopAll">
+          <stop-icon /> 全部停止
+        </button>
       </div>
     </header>
 
-    <!-- ====== 卡片网格 ====== -->
-    <section class="card-grid">
-      <article
-        v-for="(item, index) in displayProjects" :key="item.isGroup ? item.groupId : item.id"
-        class="card" :class="[`card--${item.status}`, item.lifecycle !== 'active' ? `card--${item.lifecycle}` : '']">
+    <div class="main-content" style="padding-bottom: 40px; overflow-y: auto; flex: 1;">
+      <!-- ====== 卡片网格 ====== -->
+      <section class="card-grid">
+        <article
+          v-for="item in displayProjects" :key="item.isGroup ? item.groupId : item.id"
+          class="card" :class="[`card--${item.status}`, item.lifecycle !== 'active' ? `card--${item.lifecycle}` : '']">
 
-        <!-- 头部行 -->
-        <div class="card-head">
-          <div class="card-head-left">
-            <span class="card-num">{{ String(index + 1).padStart(2, '0') }}</span>
-            <h3 class="card-title">{{ item.name }}</h3>
-          </div>
-          <div class="card-head-right">
-            <t-tag class="card-status-tag" size="small" :theme="statusMeta(item.status).theme" variant="light">{{ statusMeta(item.status).label }}</t-tag>
-          </div>
-        </div>
-
-        <!-- 版本切换行 -->
-        <div class="card-version-row" v-if="item.isGroup">
-          <div class="capsule-toggle">
-            <div 
-              v-for="v in item.availableVersions" 
-              :key="v" 
-              class="capsule-opt" 
-              :class="{ active: item.activeVersion === v }"
-              @click="activeVersions[item.groupId] = v"
-            >{{ v }}</div>
-          </div>
-        </div>
-
-        <!-- 技术标签行 -->
-        <div class="tag-row">
-          <span v-if="item.ports" class="device-icon" title="支持 PC 端">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
-          </span>
-          <span v-if="item.ports && item.mobileEntry" class="device-icon" title="支持移动端">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="3"/><path d="M12 18h.01"/></svg>
-          </span>
-          <span class="tag tag--impl">{{ item.implementation }}</span>
-          <span v-for="t in item.techStack" :key="t" class="tag">{{ t }}</span>
-        </div>
-
-        <!-- 描述 -->
-        <p class="card-desc">{{ item.description }}</p>
-
-        <!-- URL区域 -->
-        <div class="card-urls" v-if="item.ports">
-          <!-- PC端 -->
-          <div class="url-row-group">
-            <div class="url-label">
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
-              <span>PC端</span>
+          <!-- 头部行 -->
+          <div class="card-head">
+            <div class="card-head-left">
+              <span class="card-num">{{ String(item.originalIndex).padStart(2, '0') }}</span>
+              <h3 class="card-title">{{ item.name }}</h3>
             </div>
-            <div class="url-items">
-              <div class="url-item" v-for="u in pcUrls(item)" :key="u">
-                <a :href="u" target="_blank" class="url" :class="{ 'url--lan': isLanHighlight(u) }">{{ u }}</a>
-                <button class="copy-btn" @click="copyText(u)" title="复制地址">
-                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                </button>
+            <div class="card-head-right">
+              <t-tag class="card-status-tag" size="small" :theme="statusMeta(item.status).theme" variant="light">{{ statusMeta(item.status).label }}</t-tag>
+            </div>
+          </div>
+
+          <!-- 版本切换行 -->
+          <div class="card-version-row" v-if="item.isGroup">
+            <div class="capsule-toggle">
+              <div 
+                v-for="v in item.availableVersions" 
+                :key="v" 
+                class="capsule-opt" 
+                :class="{ active: item.activeVersion === v }"
+                @click="activeVersions[item.groupId] = v"
+              >{{ v }}</div>
+            </div>
+          </div>
+
+          <!-- 技术标签行 -->
+          <div class="tag-row">
+            <t-tooltip content="支持 PC 端" v-if="item.ports">
+              <span class="device-icon">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+              </span>
+            </t-tooltip>
+            <t-tooltip content="支持移动端" v-if="item.ports && item.mobileEntry">
+              <span class="device-icon">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="3"/><path d="M12 18h.01"/></svg>
+              </span>
+            </t-tooltip>
+            <span class="tag tag--impl">{{ item.implementation }}</span>
+            <span v-for="t in item.techStack" :key="t" class="tag">{{ t }}</span>
+          </div>
+
+          <!-- 描述 -->
+          <p class="card-desc">{{ item.description }}</p>
+
+          <!-- URL区域 -->
+          <div class="card-urls" v-if="['healthy','external','starting'].includes(item.status) && item.ports">
+            <!-- PC端 -->
+            <div class="url-row-group">
+              <div class="url-label">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+                <span>PC端</span>
+              </div>
+              <div class="url-items">
+                <div class="url-item" v-for="u in pcUrls(item)" :key="u">
+                  <a :href="u" target="_blank" class="url" :class="{ 'url--lan': isLanHighlight(u) }">{{ u }}</a>
+                  <t-tooltip content="复制地址">
+                    <button class="copy-btn" @click="copyText(u)">
+                      <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                    </button>
+                  </t-tooltip>
+                </div>
+              </div>
+            </div>
+            <!-- 移动端 -->
+            <div class="url-row-group" v-if="item.mobileEntry">
+              <div class="url-label">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="3"/><path d="M12 18h.01"/></svg>
+                <span>移动端</span>
+              </div>
+              <div class="url-items">
+                <div class="url-item" v-for="u in mobileUrls(item)" :key="u">
+                  <a :href="u" target="_blank" class="url" :class="{ 'url--lan': isLanHighlight(u) }">{{ u }}</a>
+                  <t-tooltip content="复制地址">
+                    <button class="copy-btn" @click="copyText(u)">
+                      <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                    </button>
+                  </t-tooltip>
+                </div>
               </div>
             </div>
           </div>
-          <!-- 移动端 -->
-          <div class="url-row-group" v-if="item.mobileEntry">
-            <div class="url-label">
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="3"/><path d="M12 18h.01"/></svg>
-              <span>移动端</span>
-            </div>
-            <div class="url-items">
-              <div class="url-item" v-for="u in mobileUrls(item)" :key="u">
-                <a :href="u" target="_blank" class="url" :class="{ 'url--lan': isLanHighlight(u) }">{{ u }}</a>
-                <button class="copy-btn" @click="copyText(u)" title="复制地址">
-                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                </button>
-              </div>
+
+          <!-- 底部操作 -->
+          <div class="card-foot">
+            <button class="foot-link text-gray" v-if="['healthy','external','starting'].includes(item.status)" @click="showLogs(item)">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+              日志
+            </button>
+            <div class="foot-actions" style="margin-left: auto;">
+              <t-button
+                v-if="['healthy','external','starting'].includes(item.status) && item.managed"
+                theme="danger" size="small"
+                :loading="busyId===item.id && busyAction==='stop'"
+                :disabled="busyId===item.id && busyAction!=='stop'"
+                @click="projectAction(item,'stop')">
+                停止服务
+              </t-button>
+              <t-button
+                v-if="!['healthy','external','starting'].includes(item.status)"
+                theme="primary" size="small"
+                :loading="busyId===item.id && busyAction==='start'"
+                :disabled="busyId===item.id"
+                @click="projectAction(item,'start')">
+                启动服务
+              </t-button>
+              <t-button v-if="['healthy','external','starting'].includes(item.status)" variant="outline" size="small" :disabled="!item.url" @click="openProject(item)">打开系统</t-button>
+              <t-button variant="outline" size="small" @click="showDetail(item)">详情</t-button>
             </div>
           </div>
-        </div>
-        <div class="card-urls card-urls--empty" v-else>
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-          <span>服务未启动，无可用地址</span>
-        </div>
 
-        <!-- 底部操作 -->
-        <div class="card-foot">
-          <button class="foot-link text-gray" @click="showLogs(item)">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-            日志
-          </button>
-          <div class="foot-actions">
-            <t-button
-              v-if="['healthy','external','starting'].includes(item.status) && item.managed"
-              theme="danger" size="small"
-              :loading="busyId===item.id && busyAction==='stop'"
-              :disabled="busyId===item.id && busyAction!=='stop'"
-              @click="projectAction(item,'stop')">
-              停止服务
-            </t-button>
-            <t-button
-              v-else
-              theme="primary" size="small"
-              :loading="busyId===item.id && busyAction==='start'"
-              :disabled="['healthy','external','starting'].includes(item.status) || busyId===item.id"
-              @click="projectAction(item,'start')">
-              启动服务
-            </t-button>
-            <t-button variant="outline" size="small" :disabled="!item.url" @click="openProject(item)">打开系统</t-button>
-            <t-button variant="outline" size="small" @click="showDetail(item)">详情</t-button>
-          </div>
-        </div>
-
-        <!-- 提示条 -->
-        <div v-if="item.status==='external'" class="card-hint warn">该服务不是由当前门户启动，无法强制停止。</div>
-        <div v-if="item.status==='conflict'" class="card-hint error">端口已被其他未知程序占用，启动失败。</div>
-      </article>
-    </section>
+          <!-- 提示条 -->
+          <div v-if="item.status==='external'" class="card-hint warn">该服务不是由当前门户启动，无法强制停止。</div>
+          <div v-if="item.status==='conflict'" class="card-hint error">端口已被其他未知程序占用，启动失败。</div>
+        </article>
+      </section>
+    </div>
 
     <!-- ====== 日志弹窗 ====== -->
     <t-dialog v-model:visible="logDialog.visible" :header="`${logDialog.name} · 运行日志`" width="900px" :footer="false">
@@ -186,6 +190,24 @@
         </dl>
       </div>
     </t-dialog>
+
+    <!-- ====== 帮助弹窗 ====== -->
+    <t-dialog v-model:visible="helpDialogVisible" header="端口冲突排查指南" width="600px" :footer="false">
+      <div class="help-content">
+        <p>如果系统启动失败，提示<strong>“端口已被其他未知程序占用”</strong>，请按照以下步骤使用 PowerShell 或 CMD 结束占用端口的进程：</p>
+        
+        <h4>1. 查找占用端口的进程 ID (PID)</h4>
+        <p>假设被占用的端口号为 <code>3000</code>，在终端中运行以下命令：</p>
+        <div class="code-block">netstat -ano | findstr :3000</div>
+        <p>在输出结果的最后一行，你会看到一个数字（例如 <code>12345</code>），这就是占用该端口的进程 ID (PID)。</p>
+
+        <h4>2. 强制结束该进程</h4>
+        <p>拿到 PID 后（假设为 <code>12345</code>），运行以下命令强制结束它：</p>
+        <div class="code-block">taskkill /F /PID 12345</div>
+        
+        <p style="margin-top: 16px; color: #666; font-size: 12px;">提示：如果你使用的是纯 PowerShell 环境，也可以使用 <code>Stop-Process -Id 12345 -Force</code> 来结束进程。</p>
+      </div>
+    </t-dialog>
   </main>
 </template>
 
@@ -193,9 +215,11 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { MessagePlugin } from 'tdesign-vue-next'
+import { RefreshIcon, PlayIcon, StopIcon, HelpCircleIcon } from 'tdesign-icons-vue-next'
 
 const projects = ref([])
 const infrastructure = reactive({ docker: {}, postgres: {}, nocodb: {} })
+const helpDialogVisible = ref(false)
 const token = ref('')
 const refreshing = ref(false)
 const dockerStarting = ref(false)
@@ -234,7 +258,7 @@ const displayProjects = computed(() => {
     }
   })
 
-  return groups.map(g => {
+  return groups.map((g, index) => {
     if (g.isGroup) {
       const activeLabel = activeVersions[g.groupId] || (g.versions['新版'] ? '新版' : Object.keys(g.versions)[0])
       if (!activeVersions[g.groupId]) {
@@ -246,10 +270,11 @@ const displayProjects = computed(() => {
         isGroup: true, 
         groupId: g.groupId, 
         availableVersions: Object.keys(g.versions).sort((a,b) => b.localeCompare(a)), // 新版 before 旧版 
-        activeVersion: activeLabel 
+        activeVersion: activeLabel,
+        originalIndex: index + 1
       }
     }
-    return g
+    return { ...g, originalIndex: index + 1 }
   })
 })
 
@@ -387,7 +412,7 @@ onBeforeUnmount(() => clearInterval(timer))
 .top-bar-left { display: flex; align-items: center; gap: 20px; flex-shrink: 0; }
 .logo-area { display: flex; align-items: center; gap: 10px; }
 .logo-svg { flex-shrink: 0; filter: drop-shadow(0 2px 4px rgba(59,130,246,0.3)); }
-.logo-text { font-size: 16px; font-weight: 700; color: #fff; white-space: nowrap; letter-spacing: 0.5px; }
+.logo-text { font-size: 22px; font-weight: 700; color: #fff; white-space: nowrap; letter-spacing: 0.5px; }
 
 .summary-pills { display: flex; gap: 8px; }
 .pill {
@@ -398,7 +423,7 @@ onBeforeUnmount(() => clearInterval(timer))
   border: 1px solid rgba(255,255,255,0.05);
 }
 .pill b { font-weight: 600; }
-.pill em { font-style: normal; font-weight: 800; padding: 1px 7px; border-radius: 10px; background: rgba(255,255,255,0.15); color: #fff; font-size: 12px; }
+.pill em { font-style: normal; font-weight: 600; padding: 1px 6px; border-radius: 10px; background: rgba(255,255,255,0.15); color: #fff; font-size: 10px; }
 .pill-running { background: rgba(16, 185, 129, 0.15); color: #34d399; border-color: rgba(16,185,129,0.2); }
 .pill-running em { background: #10b981; color: #fff; }
 .pill-dot { width: 7px; height: 7px; border-radius: 50%; }
@@ -436,17 +461,32 @@ onBeforeUnmount(() => clearInterval(timer))
 .chip-btn:hover { background: #3b82f6; color: #fff; border-color: #3b82f6; }
 .chip-btn:disabled { opacity: .45; cursor: default; }
 
-.top-bar-right { display: flex; gap: 8px; flex-shrink: 0; }
-.tb-icon {
-  display: grid; place-items: center; width: 32px; height: 32px;
-  border: 1px solid rgba(255,255,255,0.1); border-radius: 50%; background: rgba(255,255,255,0.05);
-  color: #cbd5e1; cursor: pointer; transition: all .2s cubic-bezier(0.4, 0, 0.2, 1);
+.top-bar-right { display: flex; gap: 10px; flex-shrink: 0; }
+.tb-action-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 32px; padding: 0 16px;
+  border-radius: 16px; font-size: 13px; font-weight: 600;
+  cursor: pointer; transition: all 0.2s;
+  border: 1px solid transparent; outline: none;
 }
-.tb-icon:hover { border-color: rgba(255,255,255,0.2); color: #fff; background: rgba(255,255,255,0.15); transform: scale(1.05); }
-.tb-icon:active { transform: scale(0.95); }
-.tb-icon-primary:hover { background: rgba(59,130,246,0.2); border-color: #3b82f6; color: #60a5fa; }
-.tb-icon-danger:hover { background: rgba(239,68,68,0.2); border-color: #ef4444; color: #f87171; }
-.tb-icon:disabled { opacity: .35; cursor: default; pointer-events: none; }
+.tb-action-btn svg { width: 16px; height: 16px; }
+
+.tb-help { background: rgba(255,255,255,0.05); color: #cbd5e1; border-color: rgba(255,255,255,0.1); }
+.tb-help:hover { background: rgba(255,255,255,0.15); color: #fff; transform: translateY(-1px); }
+.tb-help:active { transform: translateY(0); }
+
+.tb-refresh { background: rgba(255,255,255,0.1); color: #e2e8f0; border-color: rgba(255,255,255,0.15); }
+.tb-refresh:hover { background: rgba(255,255,255,0.15); color: #fff; transform: translateY(-1px); }
+.tb-refresh:active { transform: translateY(0); }
+.tb-refresh:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+.tb-start { background: rgba(59,130,246,0.15); color: #60a5fa; border-color: rgba(59,130,246,0.3); }
+.tb-start:hover { background: #3b82f6; color: #fff; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(59,130,246,0.2); }
+.tb-start:active { transform: translateY(0); }
+
+.tb-stop { background: rgba(239,68,68,0.15); color: #f87171; border-color: rgba(239,68,68,0.3); }
+.tb-stop:hover { background: #ef4444; color: #fff; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(239,68,68,0.2); }
+.tb-stop:active { transform: translateY(0); }
 
 /* ===== 卡片网格 ===== */
 .card-grid {
@@ -456,7 +496,6 @@ onBeforeUnmount(() => clearInterval(timer))
   max-width: 1800px;
   margin: 0 auto;
   padding: 24px 28px;
-  flex: 1;
 }
 
 /* ===== 单张卡片 ===== */
@@ -477,6 +516,7 @@ onBeforeUnmount(() => clearInterval(timer))
 .card--starting { border-top-color: #3b82f6; }
 .card--conflict, .card--exited { border-top-color: #ef4444; }
 
+
 /* 头部 */
 .card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
 .card-head-left { display: flex; align-items: center; gap: 12px; }
@@ -494,6 +534,7 @@ onBeforeUnmount(() => clearInterval(timer))
 /* 胶囊切换 */
 .card-version-row {
   display: flex;
+  justify-content: center;
   margin-bottom: 14px;
 }
 .capsule-toggle {
@@ -624,5 +665,20 @@ onBeforeUnmount(() => clearInterval(timer))
 @media (max-width: 700px) {
   .card-grid { grid-template-columns: 1fr; padding: 12px; gap: 12px; }
   .top-bar-center { display: none; }
+}
+
+/* ====== 帮助弹窗 ====== */
+.help-content { font-size: 14px; line-height: 1.6; color: #333; }
+.help-content h4 { margin: 16px 0 8px; font-size: 15px; color: #000; }
+.help-content p { margin-bottom: 8px; }
+.code-block {
+  background: #1e293b; color: #a5b4fc;
+  padding: 10px 14px; border-radius: 6px;
+  font-family: monospace; font-size: 13px;
+  margin-bottom: 12px; user-select: all;
+}
+.help-content code {
+  background: #f1f5f9; color: #ef4444;
+  padding: 2px 6px; border-radius: 4px; font-family: monospace;
 }
 </style>
