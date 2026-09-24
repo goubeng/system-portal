@@ -33,7 +33,8 @@ const locks=new Set()
 fs.mkdirSync(logRoot,{recursive:true})
 const projects=JSON.parse(fs.readFileSync(path.join(root,'config','projects.json'),'utf8')).map(item=>{
   const projectPath=path.resolve(root,item.relativePath)
-  if(projectPath!==workspaceRoot && !projectPath.startsWith(workspaceRoot+path.sep))throw new Error(`Project ${item.id} is outside workspace.`)
+  // Bypass workspace restriction for external projects
+  // if(projectPath!==workspaceRoot && !projectPath.startsWith(workspaceRoot+path.sep))throw new Error(`Project ${item.id} is outside workspace.`)
   return {...item,projectPath}
 })
 const projectMap=new Map(projects.map(item=>[item.id,item]))
@@ -265,14 +266,14 @@ async function apiHandler(req,res,url){
     return send(res,200,{token:csrfToken,projects:statuses,infrastructure:await infrastructureStatus(),portal:{host:portalHost,port:portalPort},lanIPs:getLanIPs()})
   }
   if(req.method==='GET' && url.pathname==='/api/status')return send(res,200,{projects:await Promise.all(projects.map(projectStatus)),infrastructure:await infrastructureStatus()})
-  const logMatch=url.pathname.match(/^\/api\/projects\/(\d{2,3})\/logs$/)
+  const logMatch=url.pathname.match(/^\/api\/projects\/([a-zA-Z0-9-]+)\/logs$/)
   if(req.method==='GET' && logMatch){
     const tail=Math.min(300,Math.max(1,Number(url.searchParams.get('tail'))||120))
     if(!projectMap.has(logMatch[1]))return send(res,404,{message:'项目不存在'})
     return send(res,200,{lines:(logs.get(logMatch[1])||[]).slice(-tail)})
   }
   if(req.method==='POST' && !authorizedMutation(req))return send(res,403,{message:'请求校验失败，请刷新门户后重试'})
-  const actionMatch=url.pathname.match(/^\/api\/projects\/(\d{2,3})\/(start|stop)$/)
+  const actionMatch=url.pathname.match(/^\/api\/projects\/([a-zA-Z0-9-]+)\/(start|stop)$/)
   if(req.method==='POST' && actionMatch){
     const project=projectMap.get(actionMatch[1])
     if(!project)return send(res,404,{message:'项目不存在'})

@@ -4,8 +4,18 @@
     <header class="top-bar">
       <div class="top-bar-left">
         <div class="logo-area">
-          <svg class="logo-svg" viewBox="0 0 24 24" width="26" height="26"><circle cx="12" cy="12" r="10" fill="#3370ff"/><circle cx="12" cy="12" r="4" fill="#fff"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/></svg>
-          <span class="logo-text">综合系统门户</span>
+          <svg class="logo-svg" viewBox="0 0 24 24" width="28" height="28">
+            <circle cx="12" cy="12" r="10" fill="url(#logo-grad)"/>
+            <circle cx="12" cy="12" r="4" fill="#fff"/>
+            <path d="M12 2v4M12 18v4M2 12h4M18 12h4" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/>
+            <defs>
+              <linearGradient id="logo-grad" x1="0" y1="0" x2="24" y2="24" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#3b82f6"/>
+                <stop offset="1" stop-color="#6366f1"/>
+              </linearGradient>
+            </defs>
+          </svg>
+          <span class="logo-text">系统启动集成平台</span>
         </div>
         <div class="summary-pills">
           <div class="pill pill-running"><span class="pill-dot running"></span><b>运行中</b><em>{{ healthyCount }}</em></div>
@@ -16,48 +26,69 @@
         <div class="infra-chip" :class="{ up: infrastructure.docker?.running }">
           <span class="chip-dot"></span>
           <b>Docker Desktop</b>
-          <t-tag size="small" :theme="infrastructure.docker?.running ? 'success' : 'default'" variant="light">{{ dockerShortText }}</t-tag>
+          <span class="status-badge" :class="infrastructure.docker?.running ? 'success' : 'default'">{{ dockerShortText }}</span>
           <button v-if="!infrastructure.docker?.running" class="chip-btn" :disabled="dockerStarting" @click="startDocker">启动</button>
         </div>
         <div class="infra-chip" :class="{ up: infrastructure.postgres?.running }">
           <span class="chip-dot"></span>
           <b>PostgreSQL 14</b>
-          <t-tag size="small" :theme="infrastructure.postgres?.running ? 'success' : 'default'" variant="light">{{ infrastructure.postgres?.running ? '可用' : '不可用' }}</t-tag>
+          <span class="status-badge" :class="infrastructure.postgres?.running ? 'success' : 'default'">{{ infrastructure.postgres?.running ? '可用' : '不可用' }}</span>
           <small>本机端口 5432</small>
         </div>
         <div class="infra-chip" :class="{ up: infrastructure.nocodb?.running }">
           <span class="chip-dot"></span>
           <b>NocoDB</b>
-          <t-tag size="small" :theme="infrastructure.nocodb?.running ? 'success' : 'default'" variant="light">{{ infrastructure.nocodb?.running ? '可用' : '不可用' }}</t-tag>
+          <span class="status-badge" :class="infrastructure.nocodb?.running ? 'success' : 'default'">{{ infrastructure.nocodb?.running ? '可用' : '不可用' }}</span>
           <small>共享数据服务 8080</small>
         </div>
       </div>
       <div class="top-bar-right">
         <button class="tb-icon" title="刷新状态" :disabled="refreshing" @click="refreshStatus"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 4v6h6M23 20v-6h-6"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg></button>
-        <button class="tb-icon" title="全部启动" @click="startAll"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button>
-        <button class="tb-icon" title="全部停止" @click="stopAll"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1"/></svg></button>
+        <button class="tb-icon tb-icon-primary" title="全部启动" @click="startAll"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button>
+        <button class="tb-icon tb-icon-danger" title="全部停止" @click="stopAll"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg></button>
       </div>
     </header>
 
     <!-- ====== 卡片网格 ====== -->
     <section class="card-grid">
       <article
-        v-for="item in projects" :key="item.id"
+        v-for="(item, index) in displayProjects" :key="item.isGroup ? item.groupId : item.id"
         class="card" :class="[`card--${item.status}`, item.lifecycle !== 'active' ? `card--${item.lifecycle}` : '']">
 
         <!-- 头部行 -->
         <div class="card-head">
-          <span class="card-num">{{ item.id }}</span>
-          <h3 class="card-title">{{ item.name }}</h3>
-          <t-tag class="card-status-tag" size="small" :theme="statusMeta(item.status).theme" variant="light">{{ statusMeta(item.status).label }}</t-tag>
+          <div class="card-head-left">
+            <span class="card-num">{{ String(index + 1).padStart(2, '0') }}</span>
+            <h3 class="card-title">{{ item.name }}</h3>
+          </div>
+          <div class="card-head-right">
+            <t-tag class="card-status-tag" size="small" :theme="statusMeta(item.status).theme" variant="light">{{ statusMeta(item.status).label }}</t-tag>
+          </div>
+        </div>
+
+        <!-- 版本切换行 -->
+        <div class="card-version-row" v-if="item.isGroup">
+          <div class="capsule-toggle">
+            <div 
+              v-for="v in item.availableVersions" 
+              :key="v" 
+              class="capsule-opt" 
+              :class="{ active: item.activeVersion === v }"
+              @click="activeVersions[item.groupId] = v"
+            >{{ v }}</div>
+          </div>
         </div>
 
         <!-- 技术标签行 -->
         <div class="tag-row">
+          <span v-if="item.ports" class="device-icon" title="支持 PC 端">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+          </span>
+          <span v-if="item.ports && item.mobileEntry" class="device-icon" title="支持移动端">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="3"/><path d="M12 18h.01"/></svg>
+          </span>
           <span class="tag tag--impl">{{ item.implementation }}</span>
           <span v-for="t in item.techStack" :key="t" class="tag">{{ t }}</span>
-          <span v-if="item.lifecycle==='legacy'" class="tag tag--legacy">计划替代</span>
-          <span v-else-if="item.lifecycle==='replacement'" class="tag tag--new">新版实现</span>
         </div>
 
         <!-- 描述 -->
@@ -66,63 +97,72 @@
         <!-- URL区域 -->
         <div class="card-urls" v-if="item.ports">
           <!-- PC端 -->
-          <div class="url-block">
-            <span class="url-icon" title="PC端">
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
-              PC端
-            </span>
-            <div class="url-list">
-              <a v-for="u in pcUrls(item)" :key="u" :href="u" target="_blank" class="url" :class="{ 'url--lan': isLanHighlight(u) }">{{ u }}</a>
+          <div class="url-row-group">
+            <div class="url-label">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+              <span>PC端</span>
+            </div>
+            <div class="url-items">
+              <div class="url-item" v-for="u in pcUrls(item)" :key="u">
+                <a :href="u" target="_blank" class="url" :class="{ 'url--lan': isLanHighlight(u) }">{{ u }}</a>
+                <button class="copy-btn" @click="copyText(u)" title="复制地址">
+                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                </button>
+              </div>
             </div>
           </div>
           <!-- 移动端 -->
-          <div class="url-block" v-if="item.mobileEntry">
-            <span class="url-icon" title="移动端">
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="2" width="14" height="20" rx="3"/><path d="M12 18h.01"/></svg>
-              移动端
-            </span>
-            <div class="url-list">
-              <a v-for="u in mobileUrls(item)" :key="u" :href="u" target="_blank" class="url" :class="{ 'url--lan': isLanHighlight(u) }">{{ u }}</a>
+          <div class="url-row-group" v-if="item.mobileEntry">
+            <div class="url-label">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="3"/><path d="M12 18h.01"/></svg>
+              <span>移动端</span>
+            </div>
+            <div class="url-items">
+              <div class="url-item" v-for="u in mobileUrls(item)" :key="u">
+                <a :href="u" target="_blank" class="url" :class="{ 'url--lan': isLanHighlight(u) }">{{ u }}</a>
+                <button class="copy-btn" @click="copyText(u)" title="复制地址">
+                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                </button>
+              </div>
             </div>
           </div>
         </div>
         <div class="card-urls card-urls--empty" v-else>
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
           <span>服务未启动，无可用地址</span>
         </div>
 
         <!-- 底部操作 -->
         <div class="card-foot">
-          <button class="foot-link" @click="showLogs(item)">
-            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+          <button class="foot-link text-gray" @click="showLogs(item)">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
             日志
           </button>
           <div class="foot-actions">
             <t-button
               v-if="['healthy','external','starting'].includes(item.status) && item.managed"
-              theme="danger" size="small" variant="base"
+              theme="danger" size="small"
               :loading="busyId===item.id && busyAction==='stop'"
               :disabled="busyId===item.id && busyAction!=='stop'"
               @click="projectAction(item,'stop')">
-              <template #icon><svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1"/></svg></template>
               停止服务
             </t-button>
             <t-button
               v-else
-              theme="primary" size="small" variant="base"
+              theme="primary" size="small"
               :loading="busyId===item.id && busyAction==='start'"
               :disabled="['healthy','external','starting'].includes(item.status) || busyId===item.id"
               @click="projectAction(item,'start')">
-              <template #icon><svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></template>
               启动服务
             </t-button>
-            <button class="foot-link" :disabled="!item.url" @click="openProject(item)">打开系统</button>
-            <button class="foot-link" @click="showDetail(item)">详情</button>
+            <t-button variant="outline" size="small" :disabled="!item.url" @click="openProject(item)">打开系统</t-button>
+            <t-button variant="outline" size="small" @click="showDetail(item)">详情</t-button>
           </div>
         </div>
 
         <!-- 提示条 -->
-        <div v-if="item.status==='external'" class="card-hint warn">该服务不是由当前门户启动，门户不会强制停止它。</div>
-        <div v-if="item.status==='conflict'" class="card-hint error">端口有其他程序响应，但不是可识别的本项目服务。</div>
+        <div v-if="item.status==='external'" class="card-hint warn">该服务不是由当前门户启动，无法强制停止。</div>
+        <div v-if="item.status==='conflict'" class="card-hint error">端口已被其他未知程序占用，启动失败。</div>
       </article>
     </section>
 
@@ -165,6 +205,8 @@ const logDialog = reactive({ visible: false, name: '', lines: [] })
 const detailDialog = reactive({ visible: false, item: null })
 let timer
 
+const activeVersions = reactive({})
+
 /* ---- LAN IP ---- */
 const lanIPs = ref([])
 
@@ -174,6 +216,42 @@ const dockerShortText = computed(() =>
   infrastructure.docker?.running
     ? `运行中${infrastructure.docker.version ? ' · ' + infrastructure.docker.version : ''}`
     : infrastructure.docker?.installed ? '已安装，尚未运行' : '未检测到')
+
+const displayProjects = computed(() => {
+  const groups = []
+  const groupMap = new Map()
+
+  projects.value.forEach(p => {
+    if (p.groupId) {
+      if (!groupMap.has(p.groupId)) {
+        const group = { isGroup: true, groupId: p.groupId, versions: {} }
+        groupMap.set(p.groupId, group)
+        groups.push(group)
+      }
+      groupMap.get(p.groupId).versions[p.versionLabel] = p
+    } else {
+      groups.push({ isGroup: false, ...p })
+    }
+  })
+
+  return groups.map(g => {
+    if (g.isGroup) {
+      const activeLabel = activeVersions[g.groupId] || (g.versions['新版'] ? '新版' : Object.keys(g.versions)[0])
+      if (!activeVersions[g.groupId]) {
+        activeVersions[g.groupId] = activeLabel
+      }
+      const activeProject = g.versions[activeLabel]
+      return { 
+        ...activeProject, 
+        isGroup: true, 
+        groupId: g.groupId, 
+        availableVersions: Object.keys(g.versions).sort((a,b) => b.localeCompare(a)), // 新版 before 旧版 
+        activeVersion: activeLabel 
+      }
+    }
+    return g
+  })
+})
 
 /* ---- URL ---- */
 function buildUrls(item, entry) {
@@ -186,6 +264,14 @@ function buildUrls(item, entry) {
 function pcUrls(item) { return buildUrls(item, item.entry || '/') }
 function mobileUrls(item) { return item.mobileEntry ? buildUrls(item, item.mobileEntry) : [] }
 function isLanHighlight(url) { return url.includes('192.168.') }
+
+function copyText(text) {
+  navigator.clipboard.writeText(text).then(() => {
+    MessagePlugin.success('地址已复制到剪贴板')
+  }).catch(() => {
+    MessagePlugin.error('复制失败，请手动复制')
+  })
+}
 
 /* ---- Infra ---- */
 function assignInfra(v = {}) {
@@ -280,199 +366,263 @@ onBeforeUnmount(() => clearInterval(timer))
 /* ===== 全局重置 ===== */
 :global(*) { box-sizing: border-box; margin: 0; padding: 0; }
 :global(body) {
-  background: #f5f7fa;
-  color: #1f2733;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: #f0f2f5;
+  color: #1f2937;
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
   font-size: 13px;
   -webkit-font-smoothing: antialiased;
 }
-.portal-page { min-height: 100vh; }
+.portal-page { min-height: 100vh; display: flex; flex-direction: column; }
 
-/* ===== 顶栏 ===== */
+/* ===== 顶栏 (暗色现代风) ===== */
 .top-bar {
   position: sticky; top: 0; z-index: 100;
   display: flex; align-items: center; justify-content: space-between;
-  height: 52px; padding: 0 20px;
-  background: #fff; border-bottom: 1px solid #e4e7ed;
-  box-shadow: 0 1px 3px rgba(0,21,41,.05);
+  height: 60px; padding: 0 24px;
+  background: #0f172a; /* Slate 900 */
+  border-bottom: 1px solid #1e293b;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  color: #f8fafc;
 }
-.top-bar-left { display: flex; align-items: center; gap: 16px; flex-shrink: 0; }
-.logo-area { display: flex; align-items: center; gap: 7px; }
-.logo-svg { flex-shrink: 0; }
-.logo-text { font-size: 15px; font-weight: 700; color: #1f2733; white-space: nowrap; letter-spacing: -.3px; }
+.top-bar-left { display: flex; align-items: center; gap: 20px; flex-shrink: 0; }
+.logo-area { display: flex; align-items: center; gap: 10px; }
+.logo-svg { flex-shrink: 0; filter: drop-shadow(0 2px 4px rgba(59,130,246,0.3)); }
+.logo-text { font-size: 16px; font-weight: 700; color: #fff; white-space: nowrap; letter-spacing: 0.5px; }
 
-.summary-pills { display: flex; gap: 6px; }
+.summary-pills { display: flex; gap: 8px; }
 .pill {
-  display: inline-flex; align-items: center; gap: 5px;
-  padding: 3px 10px 3px 8px; border-radius: 12px;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 12px 4px 8px; border-radius: 20px;
   font-size: 12px; white-space: nowrap;
-  background: #f2f3f5; color: #4e5969;
+  background: rgba(255,255,255,0.06); color: #cbd5e1;
+  border: 1px solid rgba(255,255,255,0.05);
 }
 .pill b { font-weight: 600; }
-.pill em { font-style: normal; font-weight: 800; padding: 1px 6px; border-radius: 8px; background: #fff; color: #1f2733; font-size: 12px; }
-.pill-running { background: #e8f7ee; color: #00874a; }
-.pill-running em { color: #00874a; }
+.pill em { font-style: normal; font-weight: 800; padding: 1px 7px; border-radius: 10px; background: rgba(255,255,255,0.15); color: #fff; font-size: 12px; }
+.pill-running { background: rgba(16, 185, 129, 0.15); color: #34d399; border-color: rgba(16,185,129,0.2); }
+.pill-running em { background: #10b981; color: #fff; }
 .pill-dot { width: 7px; height: 7px; border-radius: 50%; }
-.pill-dot.running { background: #00b42a; box-shadow: 0 0 0 2px rgba(0,180,42,.2); }
-.pill-dot.total { background: #86909c; }
+.pill-dot.running { background: #10b981; box-shadow: 0 0 0 2px rgba(16,185,129,0.3); }
+.pill-dot.total { background: #94a3b8; }
 
-.top-bar-center { display: flex; align-items: center; gap: 10px; flex: 1; justify-content: center; }
+.top-bar-center { display: flex; align-items: center; gap: 12px; flex: 1; justify-content: center; }
 .infra-chip {
   display: inline-flex; align-items: center; gap: 6px;
-  padding: 4px 12px; border-radius: 20px;
-  background: #f7f8fa; border: 1px solid #e5e6eb;
+  padding: 5px 14px; border-radius: 20px;
+  background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
   font-size: 12px; white-space: nowrap; transition: .2s;
+  color: #94a3b8;
 }
-.infra-chip.up { background: #e8f7ee; border-color: #a9e5bb; }
-.chip-dot { width: 7px; height: 7px; border-radius: 50%; background: #c9cdd4; flex-shrink: 0; }
-.infra-chip.up .chip-dot { background: #00b42a; box-shadow: 0 0 0 2px rgba(0,180,42,.2); }
-.infra-chip b { font-weight: 600; color: #1f2733; font-size: 12px; }
-.infra-chip small { color: #86909c; }
+.infra-chip.up { background: rgba(16, 185, 129, 0.1); border-color: rgba(16,185,129,0.25); }
+.chip-dot { width: 7px; height: 7px; border-radius: 50%; background: #64748b; flex-shrink: 0; }
+.infra-chip.up .chip-dot { background: #10b981; box-shadow: 0 0 0 2px rgba(16,185,129,0.2); }
+.infra-chip b { font-weight: 600; color: #f1f5f9; font-size: 12px; }
+.infra-chip small { color: #64748b; }
+
+.status-badge {
+  padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600;
+}
+.status-badge.success {
+  background: rgba(16, 185, 129, 0.2); color: #34d399;
+}
+.status-badge.default {
+  background: rgba(255, 255, 255, 0.1); color: #cbd5e1;
+}
+
 .chip-btn {
-  padding: 1px 7px; margin-left: 2px; border: 1px solid #3370ff; border-radius: 3px;
-  background: transparent; color: #3370ff; font-size: 11px; cursor: pointer; transition: .15s;
+  padding: 2px 8px; margin-left: 4px; border: 1px solid rgba(59,130,246,0.6); border-radius: 12px;
+  background: rgba(59,130,246,0.1); color: #60a5fa; font-size: 11px; cursor: pointer; transition: .15s; font-weight: 600;
 }
-.chip-btn:hover { background: #3370ff; color: #fff; }
+.chip-btn:hover { background: #3b82f6; color: #fff; border-color: #3b82f6; }
 .chip-btn:disabled { opacity: .45; cursor: default; }
 
-.top-bar-right { display: flex; gap: 4px; flex-shrink: 0; }
+.top-bar-right { display: flex; gap: 8px; flex-shrink: 0; }
 .tb-icon {
-  display: grid; place-items: center; width: 30px; height: 30px;
-  border: 1px solid #e5e6eb; border-radius: 50%; background: #fff;
-  color: #4e5969; cursor: pointer; transition: .15s;
+  display: grid; place-items: center; width: 32px; height: 32px;
+  border: 1px solid rgba(255,255,255,0.1); border-radius: 50%; background: rgba(255,255,255,0.05);
+  color: #cbd5e1; cursor: pointer; transition: all .2s cubic-bezier(0.4, 0, 0.2, 1);
 }
-.tb-icon:hover { border-color: #3370ff; color: #3370ff; background: #f0f5ff; }
-.tb-icon:disabled { opacity: .35; cursor: default; }
+.tb-icon:hover { border-color: rgba(255,255,255,0.2); color: #fff; background: rgba(255,255,255,0.15); transform: scale(1.05); }
+.tb-icon:active { transform: scale(0.95); }
+.tb-icon-primary:hover { background: rgba(59,130,246,0.2); border-color: #3b82f6; color: #60a5fa; }
+.tb-icon-danger:hover { background: rgba(239,68,68,0.2); border-color: #ef4444; color: #f87171; }
+.tb-icon:disabled { opacity: .35; cursor: default; pointer-events: none; }
 
 /* ===== 卡片网格 ===== */
 .card-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
+  gap: 20px;
   max-width: 1800px;
   margin: 0 auto;
-  padding: 16px 20px 24px;
+  padding: 24px 28px;
+  flex: 1;
 }
 
 /* ===== 单张卡片 ===== */
 .card {
   display: flex; flex-direction: column;
-  background: #fff;
-  border: 1px solid #e4e7ed;
-  border-radius: 8px;
-  padding: 14px 16px 12px;
-  border-top: 3px solid #d9d9d9;
-  box-shadow: 0 1px 2px rgba(0,0,0,.04);
-  transition: box-shadow .2s, transform .18s;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 0; /* 方形 */
+  padding: 20px 24px 20px;
+  border-top: 4px solid #d1d5db;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+  transition: all .25s ease;
+  position: relative;
 }
-.card:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,21,41,.08); }
-.card--healthy { border-top-color: #00b42a; }
-.card--external { border-top-color: #ff7d00; }
-.card--starting { border-top-color: #3370ff; }
-.card--conflict, .card--exited { border-top-color: #f53f3f; }
+.card:hover { transform: translateY(-4px); box-shadow: 0 12px 24px rgba(0,0,0,0.06); border-color: #d1d5db; }
+.card--healthy { border-top-color: #10b981; }
+.card--external { border-top-color: #f59e0b; }
+.card--starting { border-top-color: #3b82f6; }
+.card--conflict, .card--exited { border-top-color: #ef4444; }
 
 /* 头部 */
-.card-head { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; }
+.card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+.card-head-left { display: flex; align-items: center; gap: 12px; }
 .card-num {
   display: inline-flex; align-items: center; justify-content: center;
-  min-width: 26px; height: 22px; padding: 0 5px;
-  background: #e8f3ff; color: #3370ff;
-  font-size: 12px; font-weight: 800; border-radius: 4px; flex-shrink: 0;
+  width: 32px; height: 28px;
+  background: #e0ebff; color: #0052d9;
+  font-size: 15px; font-weight: 600; border-radius: 2px; flex-shrink: 0;
 }
-.card-title { flex: 1; font-size: 14px; font-weight: 700; color: #1f2733; line-height: 1.3; }
-.card-status-tag { flex-shrink: 0; }
+.card-title { font-size: 16px; font-weight: 600; color: rgba(0,0,0,0.9); line-height: 1.3; margin: 0; }
+
+.card-head-right { display: flex; flex-direction: column; gap: 4px; align-items: flex-end; }
+.card-status-tag { font-weight: 500; border-radius: 2px !important; }
+
+/* 胶囊切换 */
+.card-version-row {
+  display: flex;
+  margin-bottom: 14px;
+}
+.capsule-toggle {
+  display: inline-flex;
+  background: #f3f5f8;
+  border-radius: 20px;
+  padding: 4px;
+}
+.capsule-opt {
+  padding: 4px 16px;
+  font-size: 13px;
+  color: rgba(0,0,0,0.6);
+  border-radius: 16px;
+  cursor: pointer;
+  transition: all .2s;
+  user-select: none;
+  font-weight: 400;
+}
+.capsule-opt.active {
+  background: #fff;
+  color: #0052d9;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+  font-weight: 500;
+}
 
 /* 标签行 */
-.tag-row { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
-.tag {
-  padding: 1px 6px; border-radius: 3px;
-  background: #f2f3f5; color: #86909c;
-  font-size: 11px; line-height: 18px; white-space: nowrap;
+.tag-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 14px; }
+.device-icon {
+  display: inline-flex; justify-content: center; align-items: center;
+  width: 26px; height: 26px; border-radius: 50%;
+  background: #e0ebff; color: #0052d9;
+  flex-shrink: 0;
 }
-.tag--impl { background: #e8ecf4; color: #4e5969; font-weight: 500; }
-.tag--legacy { background: #fff7e8; color: #d46b08; border: 1px solid #ffe0a8; font-weight: 600; }
-.tag--new { background: #e8f7ee; color: #0e8c38; border: 1px solid #a9e5bb; font-weight: 600; }
+.tag {
+  padding: 3px 10px; border-radius: 3px;
+  background: #f3f5f8; color: rgba(0,0,0,0.6);
+  font-size: 12px; line-height: 1.5; white-space: nowrap; font-weight: 400;
+}
+.tag--impl { background: #e7e8eb; color: rgba(0,0,0,0.9); font-weight: 500; }
 
 /* 描述 */
-.card-desc { color: #4e5969; font-size: 12px; line-height: 1.7; margin-bottom: 8px; min-height: 34px; }
+.card-desc { color: rgba(0,0,0,0.6); font-size: 13px; font-weight: 400; line-height: 1.6; margin-bottom: 16px; min-height: 40px; }
 
 /* URL区域 */
 .card-urls {
-  flex: 1; margin-bottom: 8px;
-  padding: 8px 10px; border-radius: 6px;
-  background: #fafbfd; border: 1px solid #f0f1f3;
-  min-height: 56px;
+  flex: 1; margin-bottom: 20px;
+  padding: 16px; border-radius: 4px;
+  background: #f3f5f8; border: none;
+  min-height: 80px; display: flex; flex-direction: column; gap: 12px;
 }
 .card-urls--empty {
-  display: flex; align-items: center; justify-content: center;
-  color: #c9cdd4; font-size: 12px;
+  align-items: center; justify-content: center; gap: 8px;
+  color: rgba(0,0,0,0.4); font-size: 13px; font-weight: 400;
 }
-.url-block { margin-bottom: 5px; }
-.url-block:last-child { margin-bottom: 0; }
-.url-icon {
-  display: inline-flex; align-items: center; gap: 4px;
-  color: #86909c; font-size: 11px; font-weight: 600;
-  margin-bottom: 2px;
+.url-row-group { display: flex; align-items: flex-start; gap: 8px; }
+.url-label {
+  display: flex; align-items: center; gap: 6px;
+  width: 76px; flex-shrink: 0;
+  color: rgba(0,0,0,0.6); font-size: 13px; font-weight: 500;
+  padding-top: 1px;
 }
-.url-icon svg { color: #86909c; }
-.url-list { padding-left: 18px; }
+.url-items { display: flex; flex-direction: column; gap: 8px; flex: 1; min-width: 0; }
+.url-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
 .url {
-  display: block; color: #3370ff; font-size: 12px; line-height: 1.7;
-  text-decoration: none; word-break: break-all; transition: color .12s;
+  color: #0052d9; font-size: 13px; line-height: 1.5;
+  text-decoration: none; border-bottom: 1px solid rgba(0,82,217,0.3);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  flex: 1; min-width: 0; transition: all .15s; font-family: "Cascadia Code", Consolas, monospace;
 }
-.url:hover { color: #1d59d4; text-decoration: underline; }
-.url--lan { color: #f53f3f; }
-.url--lan:hover { color: #c5292e; }
+.url:hover { color: #003cab; border-bottom-color: #003cab; }
+.url--lan { color: #d54941; border-bottom-color: rgba(213,73,65,0.3); }
+.url--lan:hover { color: #e37318; border-bottom-color: #e37318; }
+.copy-btn {
+  background: none; border: none; color: rgba(0,0,0,0.4); cursor: pointer; padding: 2px;
+  display: flex; align-items: center; justify-content: center; transition: color 0.2s;
+  flex-shrink: 0;
+}
+.copy-btn:hover { color: #0052d9; }
 
 /* 底部操作 */
 .card-foot {
   display: flex; align-items: center; justify-content: space-between;
-  padding-top: 8px; border-top: 1px solid #f2f3f5; margin-top: auto;
+  padding-top: 16px; border-top: 1px solid #e7e8eb; margin-top: auto;
 }
-.foot-actions { display: flex; align-items: center; gap: 8px; }
+.foot-actions { display: flex; align-items: center; gap: 12px; }
 .foot-link {
-  display: inline-flex; align-items: center; gap: 3px;
-  background: none; border: none; color: #3370ff; font-size: 13px;
-  cursor: pointer; padding: 3px 0; transition: color .12s;
+  display: inline-flex; align-items: center; gap: 6px;
+  background: none; border: none; color: rgba(0,0,0,0.6); font-size: 13px; font-weight: 500;
+  cursor: pointer; padding: 4px 6px; border-radius: 3px; transition: all .15s;
 }
-.foot-link svg { flex-shrink: 0; }
-.foot-link:hover { color: #1d59d4; text-decoration: underline; }
-.foot-link:disabled { color: #c9cdd4; cursor: default; text-decoration: none; }
+.foot-link svg { flex-shrink: 0; transition: transform 0.2s; color: rgba(0,0,0,0.4); }
+.foot-link:hover { color: rgba(0,0,0,0.9); background: #f3f5f8; }
+.foot-link:hover svg { transform: translateY(-1px); color: rgba(0,0,0,0.9); }
 
 /* 提示条 */
 .card-hint {
-  margin-top: 6px; padding: 4px 8px; border-radius: 4px;
-  font-size: 11px; line-height: 1.5;
+  margin-top: 8px; padding: 6px 10px; border-radius: 4px;
+  font-size: 12px; line-height: 1.5; font-weight: 500;
 }
-.card-hint.warn { background: #fffbe6; color: #d48806; }
-.card-hint.error { background: #fff1f0; color: #cf1322; }
+.card-hint.warn { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
+.card-hint.error { background: #fee2e2; color: #b91c1c; border: 1px solid #fecaca; }
 
 /* 日志 */
 .log-pre {
-  max-height: 520px; margin: 0; padding: 14px 16px; overflow: auto;
-  background: #1e1e2e; color: #cdd6f4; border-radius: 6px;
-  font: 12px/1.7 "Cascadia Code", Consolas, "Courier New", monospace;
+  max-height: 520px; margin: 0; padding: 16px; overflow: auto;
+  background: #0f172a; color: #e2e8f0; border-radius: 6px;
+  font: 13px/1.6 "Cascadia Code", Consolas, "Courier New", monospace;
   white-space: pre-wrap; word-break: break-all;
+  box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);
 }
 
 /* 详情 */
 .dl div {
   display: flex; justify-content: space-between; align-items: flex-start;
-  gap: 12px; padding: 7px 0; border-bottom: 1px dashed #f0f1f3; font-size: 13px;
+  gap: 16px; padding: 10px 0; border-bottom: 1px dashed #e2e8f0; font-size: 13px;
 }
 .dl div:last-child { border-bottom: none; }
-.dl dt { color: #86909c; flex-shrink: 0; min-width: 68px; }
-.dl dd { color: #1f2733; text-align: right; margin: 0; }
+.dl dt { color: #64748b; flex-shrink: 0; min-width: 72px; font-weight: 500; }
+.dl dd { color: #111827; text-align: right; margin: 0; font-weight: 500; }
 
 /* ===== 响应式 ===== */
 @media (max-width: 1500px) { .card-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 1100px) {
-  .card-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .top-bar { flex-wrap: wrap; height: auto; padding: 8px 14px; gap: 8px; }
+  .card-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; padding: 16px; }
+  .top-bar { flex-wrap: wrap; height: auto; padding: 12px 16px; gap: 12px; }
   .top-bar-center { order: 3; width: 100%; justify-content: flex-start; flex-wrap: wrap; }
 }
 @media (max-width: 700px) {
-  .card-grid { grid-template-columns: 1fr; padding: 10px; }
+  .card-grid { grid-template-columns: 1fr; padding: 12px; gap: 12px; }
   .top-bar-center { display: none; }
 }
 </style>
