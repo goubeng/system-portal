@@ -23,7 +23,7 @@ const distRoot=path.join(root,'dist')
 const runtimeRoot=path.join(root,'runtime')
 const logRoot=path.join(runtimeRoot,'logs')
 const portalHost='127.0.0.1'
-const portalPort=3000
+const portalPort=8484
 const csrfToken=crypto.randomBytes(24).toString('hex')
 const managed=new Map()
 const logs=new Map()
@@ -102,7 +102,7 @@ function requestUrl(url,timeout=1200){
 }
 
 function candidatePorts(project){
-  return Array.from({length:5},(_,offset)=>({
+  return Array.from({length:project.fixedPorts?1:5},(_,offset)=>({
     webPort:project.webPort+offset*2,
     apiPort:project.apiPort ? project.apiPort+offset*2 : null,
     fallback:offset
@@ -116,7 +116,10 @@ async function probeProject(project,ports){
   const response=await requestUrl(healthUrl(project,ports))
   if(!response.ok)return false
   if(project.healthType==='json-ok'){
-    try{return JSON.parse(response.body).ok===true}catch{return false}
+    try{
+      const health=JSON.parse(response.body)
+      return health.ok===true && (!project.healthRepository || health.data?.repository===project.healthRepository)
+    }catch{return false}
   }
   return typeof project.healthMarker==='string' ? response.body.includes(project.healthMarker) : true
 }
@@ -134,7 +137,8 @@ async function choosePorts(project){
     if(ports.apiPort && !await canBind('127.0.0.1',ports.apiPort))continue
     return ports
   }
-  throw new Error(`端口槽位 ${project.webPort}-${project.webPort+9} 已全部占用`)
+  if(project.fixedPorts)throw new Error(`固定端口 ${project.webPort}${project.apiPort?` / ${project.apiPort}`:''} 无法绑定，请核对 Web/API 监听进程及 Windows 保留端口；本项目不支持自动换端口`)
+  throw new Error(`端口槽位 ${project.webPort}-${project.webPort+9} 无可用端口，请检查 Web/API 监听进程及 Windows 保留端口`)
 }
 
 async function projectStatus(project){
@@ -146,13 +150,13 @@ async function projectStatus(project){
   }
   const external=await findExternal(project)
   if(external)return {...publicProject(project),status:'external',managed:false,url:projectUrl(project,external),ports:external,pid:null,lastExit:lastExit.get(project.id)||null}
-  const conflict=await Promise.all(candidatePorts(project).map(item=>isPortOpen(item.webPort)))
+  const conflict=await Promise.all(candidatePorts(project).flatMap(item=>[isPortOpen(item.webPort),...(item.apiPort?[isPortOpen(item.apiPort)]:[])]))
   return {...publicProject(project),status:conflict.some(Boolean)?'conflict':'stopped',managed:false,url:null,ports:null,pid:null,lastExit:lastExit.get(project.id)||null}
 }
 
 function publicProject(project){
   const {projectPath,relativePath,...safe}=project
-  return {...safe,folder:path.basename(projectPath),recommended:{webPort:project.webPort,apiPort:project.apiPort||null}}
+  return {...safe,folder:path.basename(projectPath),directory:projectPath,recommended:{webPort:project.webPort,apiPort:project.apiPort||null}}
 }
 
 async function waitForHealthy(project,runtime,timeoutMs){
@@ -203,6 +207,10 @@ async function startProject(project){
     const existing=await projectStatus(project)
     if(['healthy','external','starting'].includes(existing.status))return existing
     if(!fs.existsSync(project.projectPath))throw new Error('项目目录不存在')
+    if(project.requiresDocker){
+      const {docker}=await infrastructureStatus()
+      if(docker.desktopRunning===false)throw new Error('请先打开 Docker Desktop，再启动本项目')
+    }
     const ports=await choosePorts(project)
     const child=spawnProject(project,ports)
     const runtime={child,ports,startedAt:Date.now()}
@@ -211,7 +219,8 @@ async function startProject(project){
     try{await waitForHealthy(project,runtime,project.kind==='static'?10000:30000)}
     catch(error){await stopRuntime(project.id,runtime);throw error}
     return projectStatus(project)
-  }finally{locks.delete(project.id)}
+  }catch(error){appendLog(project.id,'error',error.message);throw error}
+  finally{locks.delete(project.id)}
 }
 
 function execFileResult(file,args,options={}){
@@ -241,15 +250,20 @@ const dockerCli='C:\\Program Files\\Docker\\Docker\\resources\\bin\\docker.exe'
 async function infrastructureStatus(){
   const installed=fs.existsSync(dockerDesktop)&&fs.existsSync(dockerCli)
   const docker=installed ? await execFileResult(dockerCli,['info','--format','{{.ServerVersion}}'],{timeout:3500}) : {ok:false,stdout:''}
-  return {docker:{installed,running:docker.ok,version:docker.ok?docker.stdout.trim():null},nocodb:{running:await isPortOpen(8080),port:8080},postgres:{running:await isPortOpen(5432),port:5432}}
+  const desktop=docker.ok?null:await execFileResult('tasklist.exe',['/FI','IMAGENAME eq Docker Desktop.exe','/FO','CSV','/NH'],{windowsHide:true,timeout:3500})
+  const desktopRunning=docker.ok?true:desktop.ok?/^"Docker Desktop\.exe",/im.test(desktop.stdout):null
+  const desktopDetail=desktopRunning!==null?null:desktop.error?.killed?'Docker Desktop 进程检测超时':sanitizeLine(desktop.stderr?.trim()||desktop.error?.message||'无法检测 Docker Desktop 进程')
+  const status=!installed?'not-installed':docker.ok?'running':docker.error?.killed?'timeout':'unavailable'
+  const detail=docker.ok||!installed?null:docker.error?.killed?'Docker 引擎未在 3.5 秒内响应':sanitizeLine(docker.stderr?.trim()||docker.error?.message||'Docker 引擎连接失败')
+  return {docker:{installed,running:docker.ok,desktopRunning,desktopDetail,starting:false,status,detail,version:docker.ok?docker.stdout.trim():null},nocodb:{running:await isPortOpen(8080),port:8080},postgres:{running:await isPortOpen(5432),port:5432}}
 }
 
 async function startDocker(){
-  if(!fs.existsSync(dockerDesktop))throw new Error('未找到 Docker Desktop')
   const current=await infrastructureStatus()
-  if(current.docker.running)return current
+  if(current.docker.desktopRunning || current.docker.running)return current
+  if(!fs.existsSync(dockerDesktop))throw new Error('未找到 Docker Desktop')
   spawn(dockerDesktop,[],{detached:true,stdio:'ignore',windowsHide:false}).unref()
-  return {docker:{installed:true,running:false,starting:true},nocodb:current.nocodb,postgres:current.postgres}
+  return {...current,docker:{...current.docker,starting:true}}
 }
 
 function allowedHost(req){return [`127.0.0.1:${portalPort}`,`localhost:${portalPort}`].includes(req.headers.host)}

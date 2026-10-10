@@ -186,9 +186,12 @@
     "entry": "/",
     "webPort": 4010,
     "apiPort": 4011,
-    "healthPath": "/api/health",
+    "fixedPorts": true,
+    "requiresDocker": true,
+    "healthPath": "/api/portal/health",
     "healthType": "json-ok",
-    "dependencies": [],
+    "healthRepository": "DATABASE",
+    "dependencies": ["Docker 引擎", "postgres14 容器", "nocodb_data 数据库"],
     "lifecycle": "active"
   },
   {

@@ -12,11 +12,10 @@
         </div>
       </div>
       <div class="top-bar-center">
-        <div class="infra-chip" :class="{ up: infrastructure.docker?.running }">
+        <div class="infra-chip" :class="{ up: dockerDesktopStarted === true }">
           <span class="chip-dot"></span>
           <b>Docker Desktop</b>
-          <span class="status-badge" :class="infrastructure.docker?.running ? 'success' : 'default'">{{ dockerShortText }}</span>
-          <button v-if="!infrastructure.docker?.running" class="chip-btn" :disabled="dockerStarting" @click="startDocker">启动</button>
+          <span class="status-badge" :title="dockerStatusDetail" :class="dockerDesktopStarted === true ? 'success' : 'default'">{{ dockerShortText }}</span>
         </div>
         <div class="infra-chip" :class="{ up: infrastructure.postgres?.running }">
           <span class="chip-dot"></span>
@@ -165,7 +164,7 @@
 
           <!-- 提示条 -->
           <div v-if="item.status==='external'" class="card-hint warn">该服务不是由当前门户启动，无法强制停止。</div>
-          <div v-if="item.status==='conflict'" class="card-hint error">端口已被其他未知程序占用，启动失败。</div>
+          <div v-if="item.status==='conflict'" class="card-hint error">检测到 Web 或 API 端口有监听，但系统健康检查未通过。请查看日志与帮助。</div>
         </article>
       </section>
     </div>
@@ -181,7 +180,7 @@
         <dl class="dl">
           <div><dt>编号</dt><dd>{{ detailDialog.item.id }}</dd></div>
           <div><dt>实现方式</dt><dd>{{ detailDialog.item.implementation }}</dd></div>
-          <div><dt>项目目录</dt><dd>{{ detailDialog.item.folder }}</dd></div>
+          <div><dt>项目目录</dt><dd>{{ detailDialog.item.directory || detailDialog.item.folder }}</dd></div>
           <div><dt>架构概要</dt><dd>{{ detailDialog.item.architecture }}</dd></div>
           <div><dt>推荐端口</dt><dd>Web {{ detailDialog.item.recommended?.webPort }}<template v-if="detailDialog.item.recommended?.apiPort"> / API {{ detailDialog.item.recommended.apiPort }}</template></dd></div>
           <div v-if="detailDialog.item.ports"><dt>实际端口</dt><dd>Web {{ detailDialog.item.ports.webPort }}<template v-if="detailDialog.item.ports.apiPort"> / API {{ detailDialog.item.ports.apiPort }}</template></dd></div>
@@ -192,20 +191,38 @@
     </t-dialog>
 
     <!-- ====== 帮助弹窗 ====== -->
-    <t-dialog v-model:visible="helpDialogVisible" header="端口冲突排查指南" width="600px" :footer="false">
+    <t-dialog v-model:visible="helpDialogVisible" header="系统启动与故障排查" width="min(760px, 94vw)" :footer="false">
       <div class="help-content">
-        <p>如果系统启动失败，提示<strong>“端口已被其他未知程序占用”</strong>，请按照以下步骤使用 PowerShell 或 CMD 结束占用端口的进程：</p>
-        
-        <h4>1. 查找占用端口的进程 ID (PID)</h4>
-        <p>假设被占用的端口号为 <code>3000</code>，在终端中运行以下命令：</p>
-        <div class="code-block">netstat -ano | findstr :3000</div>
-        <p>在输出结果的最后一行，你会看到一个数字（例如 <code>12345</code>），这就是占用该端口的进程 ID (PID)。</p>
-
-        <h4>2. 强制结束该进程</h4>
-        <p>拿到 PID 后（假设为 <code>12345</code>），运行以下命令强制结束它：</p>
-        <div class="code-block">taskkill /F /PID 12345</div>
-        
-        <p style="margin-top: 16px; color: #666; font-size: 12px;">提示：如果你使用的是纯 PowerShell 环境，也可以使用 <code>Stop-Process -Id 12345 -Force</code> 来结束进程。</p>
+        <h4>1. 确认访问地址与项目</h4>
+        <p>综合门户：<a :href="portalAddress" target="_blank" rel="noopener">{{ portalAddress }}</a>。业务系统请使用启动成功后卡片中的地址；API 端口不是网页入口。</p>
+        <t-select v-model="helpProjectId" aria-label="排查项目" :options="projects.map(p => ({ label: p.name, value: p.id }))" />
+        <dl v-if="helpProject" class="dl">
+          <div><dt>项目目录</dt><dd>{{ helpProject.directory || helpProject.folder }}</dd></div>
+          <div><dt>当前状态</dt><dd>{{ statusMeta(helpProject.status).label }}</dd></div>
+          <div><dt>Web / API</dt><dd>{{ helpProject.ports?.webPort || helpProject.recommended?.webPort }} / {{ helpProject.ports?.apiPort || helpProject.recommended?.apiPort || '无独立 API' }}</dd></div>
+          <div v-if="helpProject.url"><dt>访问地址</dt><dd><a :href="helpProject.url" target="_blank" rel="noopener">{{ helpProject.url }}</a></dd></div>
+        </dl>
+        <p v-if="helpProject?.fixedPorts">此项目固定使用上述 Web/API 端口，不支持自动换端口。</p>
+        <h4>2. 先看启动错误和运行日志</h4>
+        <p>点击卡片“运行日志”，检查最后一次启动后的错误。没有进程监听只表示该端口当前空闲，也可能是进程已退出、依赖失败或端口被 Windows 保留；不能据此认定系统正常。</p>
+        <p>日志文件位于综合门户目录的 <code>runtime/logs/{{ helpProjectId }}.log</code>。历史日志可能对应旧项目名称，以本次启动时间为准。</p>
+        <p>若综合门户自身打不开：在门户目录执行 <code>npm run start</code> 查看构建和启动错误，或检查 <code>runtime/portal.out.log</code> 与 <code>runtime/portal.err.log</code>。门户端口无监听时，先排查依赖与构建是否成功。</p>
+        <h4>3. 精确查询 Web 与 API 端口（PowerShell）</h4>
+        <pre class="code-block">{{ helpPortCommand }}</pre>
+        <p>只检查 Listen 状态的精确端口，查看 OwningProcess。若有结果，再核对进程路径和命令行（把 12345 换成查到的 PID）：</p>
+        <pre class="code-block">Get-CimInstance Win32_Process -Filter "ProcessId = 12345" | Select-Object ProcessId, ExecutablePath, CommandLine</pre>
+        <p>确认属于哪个系统后，优先在所属门户或原启动终端正常停止。不要直接结束未知 PID、Docker、数据库或综合门户进程。</p>
+        <p>无监听却出现 EACCES / EPERM / 无法绑定时，检查 Windows 保留端口范围；不要擅自删除保留范围：</p>
+        <pre class="code-block">netsh interface ipv4 show excludedportrange protocol=tcp</pre>
+        <h4>4. 根据错误处理依赖</h4>
+        <p>忘记打开 Docker 时，顶部会显示“未启动，请先打开”，请手动打开 Docker Desktop。门户仅检测当前启动状态；显示“已启动”表示 Docker Desktop 已打开，无需重复启动；显示“启动状态待确认”时，请确认软件是否已打开。</p>
+        <p>依赖缺失：进入“项目目录”，有 package-lock.json 时执行 <code>npm ci</code>，否则执行 <code>npm install</code>。然后用 <code>npm run dev</code> 在终端观察完整错误；独立启动成功后，门户会识别外部服务。</p>
+        <p>数据库失败或 Docker 检测超时：Docker Desktop 窗口打开不代表引擎正常。在 PowerShell 执行下列只读查询；长时间无响应可按 Ctrl+C 取消。</p>
+        <pre class="code-block">docker info --format '{{dockerVersionFormat}}'
+docker ps --format '{{dockerContainersFormat}}'</pre>
+        <p v-if="helpProject?.requiresDocker">此项目通过 <code>docker exec postgres14</code> 访问 <code>nocodb_data</code>。先确认引擎有响应、postgres14 容器运行，再排查数据库错误。5432 可连接不能替代这条执行链；不要改为 Mock 掩盖故障。</p>
+        <h4>5. 重试与确认</h4>
+        <p>修复后点击卡片“启动服务”，待状态变为“运行中”或“外部运行”再打开系统。修改门户注册配置或后端后需重启门户才生效；停止门户可能同时停止它管理的业务项目，请先确认当前任务。</p>
       </div>
     </t-dialog>
   </main>
@@ -220,9 +237,20 @@ import { RefreshIcon, PlayIcon, StopIcon, HelpCircleIcon, PoweroffIcon } from 't
 const projects = ref([])
 const infrastructure = reactive({ docker: {}, postgres: {}, nocodb: {} })
 const helpDialogVisible = ref(false)
+const helpProjectId = ref('08')
+const portalAddress = ref('http://127.0.0.1:8484/')
+const dockerVersionFormat = '{{.ServerVersion}}'
+const dockerContainersFormat = '{{.Names}}: {{.Status}}'
+const helpProject = computed(() => projects.value.find(p => p.id === helpProjectId.value))
+const helpPortCommand = computed(() => {
+  const p = helpProject.value
+  const ports = p?.ports || p?.recommended
+  if (!ports) return '请先选择需要排查的项目。'
+  const values = [ports.webPort, ports.apiPort].filter(Boolean).join(', ')
+  return `Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue |\n  Where-Object { $_.LocalPort -in @(${values}) } |\n  Select-Object LocalAddress, LocalPort, OwningProcess`
+})
 const token = ref('')
 const refreshing = ref(false)
-const dockerStarting = ref(false)
 const busyId = ref('')
 const busyAction = ref('')
 const logDialog = reactive({ visible: false, name: '', lines: [] })
@@ -236,10 +264,21 @@ const lanIPs = ref([])
 
 /* ---- 计算 ---- */
 const healthyCount = computed(() => projects.value.filter(i => ['healthy', 'external'].includes(i.status)).length)
-const dockerShortText = computed(() =>
-  infrastructure.docker?.running
-    ? `运行中${infrastructure.docker.version ? ' · ' + infrastructure.docker.version : ''}`
-    : infrastructure.docker?.installed ? '已安装，尚未运行' : '未检测到')
+const dockerDesktopStarted = computed(() => {
+  const docker = infrastructure.docker
+  if (typeof docker.desktopRunning === 'boolean') return docker.desktopRunning
+  return docker.running ? true : null
+})
+const dockerShortText = computed(() => {
+  if (dockerDesktopStarted.value === true) return '已启动'
+  return dockerDesktopStarted.value === false ? '未启动，请先打开' : '启动状态待确认'
+})
+const dockerStatusDetail = computed(() => {
+  const docker = infrastructure.docker
+  if (dockerDesktopStarted.value === false) return '请手动打开 Docker Desktop，门户仅检测当前启动状态。'
+  if (dockerDesktopStarted.value !== true) return `请确认 Docker Desktop 是否已手动打开。${docker.desktopDetail || '当前启动状态待确认。'}`
+  return docker.running ? 'Docker Desktop 已启动，引擎可用。' : `Docker Desktop 已启动。${docker.detail || '引擎尚未就绪'}，无需重复打开。`
+})
 
 const displayProjects = computed(() => {
   const groups = []
@@ -318,6 +357,7 @@ async function bootstrap() {
   const d = await api('/api/bootstrap')
   token.value = d.token
   projects.value = d.projects
+  if (d.portal) portalAddress.value = `http://${d.portal.host}:${d.portal.port}/`
   assignInfra(d.infrastructure)
   if (d.lanIPs) lanIPs.value = d.lanIPs
 }
@@ -356,13 +396,6 @@ async function exitPortal() {
   } catch (e) { MessagePlugin.error(e.message) }
 }
 
-async function startDocker() {
-  dockerStarting.value = true
-  try { assignInfra((await api('/api/infrastructure/docker/start', { method: 'POST', body: '{}' })).infrastructure); MessagePlugin.success('已请求启动 Docker Desktop') }
-  catch (e) { MessagePlugin.error(e.message) }
-  finally { dockerStarting.value = false }
-}
-
 function openProject(item) { if (item.url) window.open(item.url, '_blank', 'noopener,noreferrer') }
 
 async function showLogs(item) {
@@ -378,7 +411,7 @@ function statusMeta(s) {
     healthy: { label: '运行中', theme: 'success' },
     external: { label: '外部运行', theme: 'warning' },
     starting: { label: '启动中', theme: 'primary' },
-    conflict: { label: '端口冲突', theme: 'danger' },
+    conflict: { label: '服务待核查', theme: 'danger' },
     exited: { label: '已退出', theme: 'danger' },
     stopped: { label: '未启动', theme: 'default' }
   })[s] || { label: s || '未知', theme: 'default' }
@@ -459,13 +492,6 @@ onBeforeUnmount(() => clearInterval(timer))
 .status-badge.default {
   background: rgba(255, 255, 255, 0.1); color: #cbd5e1;
 }
-
-.chip-btn {
-  padding: 2px 8px; margin-left: 4px; border: 1px solid rgba(59,130,246,0.6); border-radius: 12px;
-  background: rgba(59,130,246,0.1); color: #60a5fa; font-size: 11px; cursor: pointer; transition: .15s; font-weight: 600;
-}
-.chip-btn:hover { background: #3b82f6; color: #fff; border-color: #3b82f6; }
-.chip-btn:disabled { opacity: .45; cursor: default; }
 
 .top-bar-right { display: flex; gap: 8px; flex-shrink: 0; }
 .tb-action-btn {
@@ -679,14 +705,14 @@ onBeforeUnmount(() => clearInterval(timer))
 }
 
 /* ====== 帮助弹窗 ====== */
-.help-content { font-size: 14px; line-height: 1.6; color: #333; }
+.help-content { max-height: 65vh; overflow-y: auto; font-size: 14px; line-height: 1.6; color: #333; overflow-wrap: anywhere; }
 .help-content h4 { margin: 16px 0 8px; font-size: 15px; color: #000; }
 .help-content p { margin-bottom: 8px; }
 .code-block {
   background: #1e293b; color: #a5b4fc;
   padding: 10px 14px; border-radius: 6px;
   font-family: monospace; font-size: 13px;
-  margin-bottom: 12px; user-select: all;
+  margin-bottom: 12px; user-select: all; white-space: pre-wrap; overflow-wrap: anywhere;
 }
 .help-content code {
   background: #f1f5f9; color: #ef4444;
