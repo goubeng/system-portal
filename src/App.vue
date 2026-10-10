@@ -76,20 +76,20 @@
 
           <!-- 技术标签行 -->
           <div class="tag-row">
-            <t-tooltip content="支持 PC 端" v-if="item.ports">
-              <span class="device-icon">
+            <t-tooltip content="支持 PC 端" v-if="item.entry !== false">
+              <span class="device-icon device-icon--pc">
                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
               </span>
             </t-tooltip>
-            <t-tooltip content="支持移动端" v-if="item.ports && item.mobileEntry">
-              <span class="device-icon">
+            <t-tooltip content="支持移动端" v-if="item.mobileEntry">
+              <span class="device-icon device-icon--mobile">
                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="3"/><path d="M12 18h.01"/></svg>
               </span>
             </t-tooltip>
-            <span class="tag tag--impl">{{ item.implementation }}</span>
-            <span class="tag tag--port" v-if="item.recommended?.webPort">
-              端口 {{ item.recommended.webPort }}{{ item.recommended.apiPort ? '/' + item.recommended.apiPort : '' }}
+            <span class="tag tag--port" v-if="item.ports?.webPort || item.recommended?.webPort">
+              端口 {{ (item.ports || item.recommended).webPort }}{{ (item.ports || item.recommended).apiPort ? '/' + (item.ports || item.recommended).apiPort : '' }}
             </span>
+            <span class="tag tag--impl">{{ item.implementation }}</span>
             <span v-for="t in item.techStack" :key="t" class="tag">{{ t }}</span>
           </div>
 
@@ -601,8 +601,15 @@ onBeforeUnmount(() => clearInterval(timer))
 .device-icon {
   display: inline-flex; justify-content: center; align-items: center;
   width: 26px; height: 26px; border-radius: 50%;
-  background: #e0ebff; color: #0052d9;
   flex-shrink: 0;
+}
+.device-icon--pc {
+  background: #e0ebff;
+  color: #0052d9;
+}
+.device-icon--mobile {
+  background: #fff0e6;
+  color: #d97706;
 }
 .tag {
   padding: 3px 10px; border-radius: 3px;
