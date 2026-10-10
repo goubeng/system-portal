@@ -77,6 +77,7 @@
     "webPort": 3203,
     "healthPath": "/",
     "healthType": "html",
+    "healthMarker": "办公用房及公产房管理",
     "dependencies": [],
     "lifecycle": "replacement"
   },

@@ -118,7 +118,7 @@ async function probeProject(project,ports){
   if(project.healthType==='json-ok'){
     try{return JSON.parse(response.body).ok===true}catch{return false}
   }
-  return typeof project.healthMarker==='string' && response.body.includes(project.healthMarker)
+  return typeof project.healthMarker==='string' ? response.body.includes(project.healthMarker) : true
 }
 
 async function findExternal(project){
