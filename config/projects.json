@@ -204,7 +204,7 @@
     "implementation": "协作工作台",
     "techStack": ["Vue 3", "Vite", "TDesign", "TypeScript"],
     "architecture": "Vite Web SPA。",
-    "relativePath": "../../协作文档/AI协作控制台",
+    "relativePath": "../../../协作文档/AI-PM-Engineering-System",
     "kind": "npm",
     "entry": "/",
     "webPort": 4101,
