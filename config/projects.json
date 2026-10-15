@@ -212,5 +212,24 @@
     "healthType": "html",
     "dependencies": [],
     "lifecycle": "active"
+  },
+  {
+    "id": "10",
+    "name": "福建教育督导与调查系统",
+    "shortName": "教育督导",
+    "description": "福建省教育督导与评估调查系统，二期优先推进A1-A4、B2/B3、C1-C9等业务，支持行政组织、学段档案、字典配置与任务填报。",
+    "implementation": "前后端分离",
+    "techStack": ["Vue 3", "TDesign", "Vite 6", "Node.js", "NocoDB"],
+    "architecture": "Vite Web (4020) + Node.js BFF (4021) + NocoDB (8080) / PostgreSQL。",
+    "relativePath": "../fujian-edu-supervision-survey",
+    "kind": "npm",
+    "entry": "/",
+    "webPort": 4020,
+    "apiPort": 4021,
+    "healthPath": "/",
+    "healthType": "html",
+    "healthMarker": "福建教育督导与调查系统",
+    "dependencies": ["Docker Desktop", "NocoDB :8080", "PostgreSQL 14 :5432"],
+    "lifecycle": "active"
   }
 ]
