@@ -1,4 +1,4 @@
-# 系统服务调度枢纽（System Service Scheduler Nexus）
+# 系统调度枢纽（System Scheduler Nexus）
 
 调度枢纽地址固定为 `http://127.0.0.1:8484`，用于统一查看、启动、停止、调度和打开多个业务系统。
 

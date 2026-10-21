@@ -5,8 +5,8 @@
       <div class="top-bar-left">
         <div class="logo-area">
           <div class="logo-title-group">
-            <span class="logo-main">系统服务调度枢纽</span>
-            <span class="logo-en">System Service Scheduler Nexus</span>
+            <span class="logo-main">系统调度枢纽</span>
+            <span class="logo-en">System Scheduler Nexus</span>
           </div>
         </div>
         <div class="summary-pills">
@@ -89,11 +89,13 @@
                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="3"/><path d="M12 18h.01"/></svg>
               </span>
             </t-tooltip>
-            <span class="tag tag--port" v-if="item.ports?.webPort || item.recommended?.webPort">
-              端口 {{ (item.ports || item.recommended).webPort }}{{ (item.ports || item.recommended).apiPort ? '/' + (item.ports || item.recommended).apiPort : '' }}
+            <span class="tag tag--port" v-if="item.ports?.webPort || item.recommended?.webPort" title="本地端口">
+              {{ (item.ports || item.recommended).webPort }}{{ (item.ports || item.recommended).apiPort ? '/' + (item.ports || item.recommended).apiPort : '' }}
             </span>
-            <span class="tag tag--impl">{{ item.implementation }}</span>
-            <span v-for="t in item.techStack" :key="t" class="tag">{{ t }}</span>
+            <span class="tag tag--db" :class="{ 'tag--db-none': !item.database || item.database.includes('无') }">
+              {{ item.database || '无数据库' }}
+            </span>
+            <span v-for="t in item.techStack" :key="t" class="tag tag--tech">{{ t }}</span>
           </div>
 
           <!-- 描述 -->
@@ -618,12 +620,26 @@ onBeforeUnmount(() => clearInterval(timer))
   color: #d97706;
 }
 .tag {
-  padding: 3px 10px; border-radius: 3px;
-  background: #f3f5f8; color: rgba(0,0,0,0.6);
+  display: inline-flex; align-items: center;
+  padding: 3px 9px; border-radius: 3px;
+  background: #f8fafc; color: #475569;
   font-size: 12px; line-height: 1.5; white-space: nowrap; font-weight: 400;
+  border: 1px solid #e2e8f0;
 }
-.tag--impl { background: #e7e8eb; color: rgba(0,0,0,0.9); font-weight: 500; }
-.tag--port { background: #e0ebff; color: #0052d9; font-weight: 600; }
+.tag--impl { background: #f1f5f9; color: #0f172a; font-weight: 600; border-color: #cbd5e1; }
+.tag--port {
+  background: #eef2ff; color: #4338ca; font-weight: 600; border-color: #c7d2fe;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+.tag--db {
+  background: #f5f3ff; color: #6d28d9; font-weight: 500; border-color: #ddd6fe;
+}
+.tag--db-none {
+  background: #f8fafc; color: #94a3b8; font-weight: 400; border: 1px dashed #cbd5e1;
+}
+.tag--tech {
+  background: #ffffff; color: #334155; border-color: #e2e8f0;
+}
 
 /* 描述 */
 .card-desc { color: rgba(0,0,0,0.6); font-size: 13px; font-weight: 400; line-height: 1.6; margin-bottom: 16px; min-height: 40px; }

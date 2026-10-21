@@ -7,7 +7,11 @@
     "shortName": "会场预定·原生",
     "description": "会场日历、预订申请、审批、会务保障和基础配置。保留用于旧版对照，已停用于 Vue 版替代。",
     "implementation": "原生多页面",
-    "techStack": ["HTML5", "CSS3", "JavaScript"],
+    "techStack": [
+      "HTML5",
+      "CSS3",
+      "JavaScript"
+    ],
     "architecture": "浏览器静态页面直接访问共享 NocoDB 8080，无本地 API 服务。",
     "relativePath": "../1-公用会场预定管理",
     "kind": "static",
@@ -17,8 +21,12 @@
     "healthPath": "/pc/index.html",
     "healthType": "html",
     "healthMarker": "公用会场预订系统",
-    "dependencies": ["Docker Desktop", "NocoDB :8080"],
-    "lifecycle": "legacy"
+    "dependencies": [
+      "Docker Desktop",
+      "NocoDB :8080"
+    ],
+    "lifecycle": "legacy",
+    "database": "PostgreSQL 14"
   },
   {
     "id": "01-new",
@@ -28,7 +36,13 @@
     "shortName": "会场预定·Vue",
     "description": "会场查询、预订、确认、保障、消息与权限管理的新技术栈实现。",
     "implementation": "前后端分离",
-    "techStack": ["Vue 3", "TDesign", "Vite 5", "Express", "PostgreSQL"],
+    "techStack": [
+      "Vue 3",
+      "TDesign",
+      "Vite 5",
+      "Express",
+      "PostgreSQL"
+    ],
     "architecture": "Vite Web + Express API + PostgreSQL，计划替代 01 原生版。",
     "relativePath": "../venue-booking-platform",
     "kind": "npm",
@@ -38,8 +52,12 @@
     "apiPort": 3702,
     "healthPath": "/api/health",
     "healthType": "json-ok",
-    "dependencies": ["Docker Desktop", "PostgreSQL 14 :5432"],
-    "lifecycle": "replacement"
+    "dependencies": [
+      "Docker Desktop",
+      "PostgreSQL 14 :5432"
+    ],
+    "lifecycle": "replacement",
+    "database": "PostgreSQL 14"
   },
   {
     "id": "02-legacy",
@@ -49,7 +67,11 @@
     "shortName": "办公用房",
     "description": "房产台账、分配使用、年度核验、退房、费用和公产房管理。",
     "implementation": "原生多页面",
-    "techStack": ["HTML5", "CSS3", "jQuery"],
+    "techStack": [
+      "HTML5",
+      "CSS3",
+      "jQuery"
+    ],
     "architecture": "浏览器静态页面直接访问共享 NocoDB 8080，项目根目录必须作为独立 Web 根目录。",
     "relativePath": "../2-办公用房及公产房管理",
     "kind": "static",
@@ -59,8 +81,12 @@
     "healthPath": "/index.html",
     "healthType": "html",
     "healthMarker": "办公用房及公产房管理",
-    "dependencies": ["Docker Desktop", "NocoDB :8080"],
-    "lifecycle": "legacy"
+    "dependencies": [
+      "Docker Desktop",
+      "NocoDB :8080"
+    ],
+    "lifecycle": "legacy",
+    "database": "PostgreSQL 14"
   },
   {
     "id": "02-new",
@@ -70,7 +96,11 @@
     "shortName": "办公用房·Vue",
     "description": "房产台账、分配使用、年度核验、退房、费用和公产房管理。",
     "implementation": "SPA 纯前端",
-    "techStack": ["Vue 3", "Vite", "Element Plus"],
+    "techStack": [
+      "Vue 3",
+      "TDesign",
+      "Vite 6"
+    ],
     "architecture": "Vite 前端应用。",
     "relativePath": "../office‑house",
     "kind": "npm",
@@ -79,8 +109,12 @@
     "healthPath": "/",
     "healthType": "html",
     "healthMarker": "办公用房及公产房管理",
-    "dependencies": [],
-    "lifecycle": "replacement"
+    "dependencies": [
+      "Docker Desktop",
+      "NocoDB :8080"
+    ],
+    "lifecycle": "replacement",
+    "database": "PostgreSQL 14"
   },
   {
     "id": "03",
@@ -88,7 +122,12 @@
     "shortName": "办公用品",
     "description": "需求计划、采购目录、申领审批、库存、供应商订单与配送协同。",
     "implementation": "Node全栈架构",
-    "techStack": ["Vue 3", "Arco Design", "Vite 6", "Node.js API"],
+    "techStack": [
+      "Vue 3",
+      "Arco Design",
+      "Vite 6",
+      "Node.js API"
+    ],
     "architecture": "Vite Web 与本机 Node API 成对启动，Web 动态代理 /api；数据服务可接共享 NocoDB。",
     "relativePath": "../4-办公用品及耗材管理系统",
     "kind": "npm",
@@ -98,8 +137,12 @@
     "apiPort": 3402,
     "healthPath": "/api/health",
     "healthType": "json-ok",
-    "dependencies": ["Docker Desktop", "NocoDB :8080"],
-    "lifecycle": "active"
+    "dependencies": [
+      "Docker Desktop",
+      "NocoDB :8080"
+    ],
+    "lifecycle": "active",
+    "database": "PostgreSQL 14"
   },
   {
     "id": "04",
@@ -107,7 +150,12 @@
     "shortName": "物业管理",
     "description": "物业工单、巡检、维修、费用与移动端协同。",
     "implementation": "响应式后台",
-    "techStack": ["Vue 3", "Arco Design", "Vite 6", "ECharts"],
+    "techStack": [
+      "Vue 3",
+      "Arco Design",
+      "Vite 6",
+      "ECharts"
+    ],
     "architecture": "Vite 前端通过 /noco 代理访问共享 NocoDB，无独立 Node API。",
     "relativePath": "../3-物业管理子系统",
     "kind": "npm",
@@ -117,8 +165,12 @@
     "healthPath": "/",
     "healthType": "html",
     "healthMarker": "物业管理子系统",
-    "dependencies": ["Docker Desktop", "NocoDB :8080"],
-    "lifecycle": "active"
+    "dependencies": [
+      "Docker Desktop",
+      "NocoDB :8080"
+    ],
+    "lifecycle": "active",
+    "database": "PostgreSQL 14"
   },
   {
     "id": "05",
@@ -126,7 +178,13 @@
     "shortName": "楼宇物联",
     "description": "能源、安消、楼宇控制、MQTT、GIS 和系统管理综合平台。",
     "implementation": "物联网管理",
-    "techStack": ["Vue 3", "TDesign", "Vite 5", "Express", "MQTT"],
+    "techStack": [
+      "Vue 3",
+      "TDesign",
+      "Vite 5",
+      "Express",
+      "MQTT"
+    ],
     "architecture": "Vite Web + Express API + PostgreSQL，Web 通过同源 /api 代理访问本机 API。",
     "relativePath": "../building-iot-platform",
     "kind": "npm",
@@ -135,8 +193,12 @@
     "apiPort": 3602,
     "healthPath": "/api/health",
     "healthType": "json-ok",
-    "dependencies": ["Docker Desktop", "PostgreSQL 14 :5432"],
-    "lifecycle": "active"
+    "dependencies": [
+      "Docker Desktop",
+      "PostgreSQL 14 :5432"
+    ],
+    "lifecycle": "active",
+    "database": "PostgreSQL 14"
   },
   {
     "id": "06",
@@ -144,7 +206,13 @@
     "shortName": "智慧园区",
     "description": "综合态势、物业、会场、办公用品、能源和安防的 Mock 演示驾驶舱。",
     "implementation": "可视化大屏",
-    "techStack": ["Vue 3", "TDesign", "Vite 7", "Pinia", "Mock.js"],
+    "techStack": [
+      "Vue 3",
+      "TDesign",
+      "Vite 7",
+      "Pinia",
+      "Mock.js"
+    ],
     "architecture": "纯前端 SPA，业务数据来自 Mock 和浏览器本地存储，无本地 API 或数据库。",
     "relativePath": "../smart-campus-VUE",
     "kind": "npm",
@@ -154,7 +222,8 @@
     "healthType": "html",
     "healthMarker": "智慧大院可视化驾驶舱",
     "dependencies": [],
-    "lifecycle": "active"
+    "lifecycle": "active",
+    "database": "无数据库"
   },
   {
     "id": "07",
@@ -162,7 +231,11 @@
     "shortName": "汇报材料",
     "description": "总体建设背景、建设内容及各业务模块的演示汇报页面。",
     "implementation": "静态演示页",
-    "techStack": ["HTML5", "CSS3", "Vanilla JS"],
+    "techStack": [
+      "HTML5",
+      "CSS3",
+      "Vanilla JS"
+    ],
     "architecture": "纯静态汇报页面，无数据库、无 API、无需安装依赖。",
     "relativePath": "../5-汇报材料",
     "kind": "static",
@@ -172,7 +245,8 @@
     "healthType": "html",
     "healthMarker": "智慧大院信息化系统建设汇报",
     "dependencies": [],
-    "lifecycle": "active"
+    "lifecycle": "active",
+    "database": "无数据库"
   },
   {
     "id": "08",
@@ -180,7 +254,12 @@
     "shortName": "卫健XC门户",
     "description": "卫健行业信创统一门户系统，支持业务子系统集中管理与导航。",
     "implementation": "信创微门户",
-    "techStack": ["Vue 3", "TDesign", "Vite 5", "Node.js"],
+    "techStack": [
+      "Vue 3",
+      "TDesign",
+      "Vite 5",
+      "Node.js"
+    ],
     "architecture": "Vite Web + Node API，Web 端口 4010，API 端口 4011。",
     "relativePath": "../unified-health-portal",
     "kind": "npm",
@@ -193,8 +272,13 @@
     "healthPath": "/api/portal/health",
     "healthType": "json-ok",
     "healthRepository": "DATABASE",
-    "dependencies": ["Docker 引擎", "postgres14 容器", "nocodb_data 数据库"],
-    "lifecycle": "active"
+    "dependencies": [
+      "Docker 引擎",
+      "postgres14 容器",
+      "nocodb_data 数据库"
+    ],
+    "lifecycle": "active",
+    "database": "PostgreSQL 14"
   },
   {
     "id": "09",
@@ -202,7 +286,12 @@
     "shortName": "AI协作",
     "description": "AI协作控制台，支持PM工程系统的管理与协作。",
     "implementation": "协作工作台",
-    "techStack": ["Vue 3", "Vite", "TDesign", "TypeScript"],
+    "techStack": [
+      "Vue 3",
+      "Vite",
+      "TDesign",
+      "TypeScript"
+    ],
     "architecture": "Vite Web SPA。",
     "relativePath": "../../../协作文档/AI-PM-Engineering-System",
     "kind": "npm",
@@ -211,7 +300,8 @@
     "healthPath": "/",
     "healthType": "html",
     "dependencies": [],
-    "lifecycle": "active"
+    "lifecycle": "active",
+    "database": "无数据库"
   },
   {
     "id": "10",
@@ -219,7 +309,13 @@
     "shortName": "教育督导",
     "description": "福建省教育督导与评估调查系统。",
     "implementation": "前后端分离",
-    "techStack": ["Vue 3", "TDesign", "Vite 6", "Node.js", "NocoDB"],
+    "techStack": [
+      "Vue 3",
+      "TDesign",
+      "Vite 6",
+      "Node.js",
+      "NocoDB"
+    ],
     "architecture": "Vite Web (4020) + Node.js BFF (4021) + NocoDB (8080) / PostgreSQL。",
     "relativePath": "../fujian-edu-supervision-survey",
     "kind": "npm",
@@ -229,7 +325,12 @@
     "healthPath": "/",
     "healthType": "html",
     "healthMarker": "福建教育督导与调查系统",
-    "dependencies": ["Docker Desktop", "NocoDB :8080", "PostgreSQL 14 :5432"],
-    "lifecycle": "active"
+    "dependencies": [
+      "Docker Desktop",
+      "NocoDB :8080",
+      "PostgreSQL 14 :5432"
+    ],
+    "lifecycle": "active",
+    "database": "PostgreSQL 14"
   }
 ]
