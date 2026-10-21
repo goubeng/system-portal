@@ -89,7 +89,7 @@
                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="3"/><path d="M12 18h.01"/></svg>
               </span>
             </t-tooltip>
-            <span class="tag tag--port" v-if="item.ports?.webPort || item.recommended?.webPort" title="本地端口">
+            <span class="tag tag--port" v-if="item.ports?.webPort || item.recommended?.webPort">
               {{ (item.ports || item.recommended).webPort }}{{ (item.ports || item.recommended).apiPort ? '/' + (item.ports || item.recommended).apiPort : '' }}
             </span>
             <span class="tag tag--db" :class="{ 'tag--db-none': !item.database || item.database.includes('无') }">
