@@ -40,8 +40,7 @@
       "Vue 3",
       "TDesign",
       "Vite 5",
-      "Express",
-      "PostgreSQL"
+      "Express"
     ],
     "architecture": "Vite Web + Express API + PostgreSQL，计划替代 01 原生版。",
     "relativePath": "../venue-booking-platform",
@@ -210,8 +209,7 @@
       "Vue 3",
       "TDesign",
       "Vite 7",
-      "Pinia",
-      "Mock.js"
+      "Pinia"
     ],
     "architecture": "纯前端 SPA，业务数据来自 Mock 和浏览器本地存储，无本地 API 或数据库。",
     "relativePath": "../smart-campus-VUE",
@@ -288,9 +286,9 @@
     "implementation": "协作工作台",
     "techStack": [
       "Vue 3",
-      "Vite",
       "TDesign",
-      "TypeScript"
+      "Vite 6",
+      "Marked"
     ],
     "architecture": "Vite Web SPA。",
     "relativePath": "../../../协作文档/AI-PM-Engineering-System",
@@ -313,8 +311,7 @@
       "Vue 3",
       "TDesign",
       "Vite 6",
-      "Node.js",
-      "NocoDB"
+      "Node.js"
     ],
     "architecture": "Vite Web (4020) + Node.js BFF (4021) + NocoDB (8080) / PostgreSQL。",
     "relativePath": "../fujian-edu-supervision-survey",
