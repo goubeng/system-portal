@@ -4,7 +4,10 @@
     <header class="top-bar">
       <div class="top-bar-left">
         <div class="logo-area">
-          <span class="logo-text">系统启动集成平台</span>
+          <div class="logo-title-group">
+            <span class="logo-main">系统服务调度枢纽</span>
+            <span class="logo-en">System Service Scheduler Nexus</span>
+          </div>
         </div>
         <div class="summary-pills">
           <div class="pill pill-running"><span class="pill-dot running"></span><b>运行中</b><em>{{ healthyCount }}</em></div>
@@ -392,7 +395,7 @@ async function stopAll() { for (const i of projects.value) if (i.managed) await 
 async function exitPortal() {
   try {
     await api('/api/exit', { method: 'POST', body: '{}' })
-    MessagePlugin.success('集成平台服务已退出，您可以安全关闭此页面。')
+    MessagePlugin.success('调度枢纽服务已退出，您可以安全关闭此页面。')
   } catch (e) { MessagePlugin.error(e.message) }
 }
 
@@ -451,6 +454,9 @@ onBeforeUnmount(() => clearInterval(timer))
 .top-bar-left { display: flex; align-items: center; gap: 20px; flex-shrink: 0; }
 .logo-area { display: flex; align-items: center; gap: 10px; }
 .logo-svg { flex-shrink: 0; filter: drop-shadow(0 2px 4px rgba(59,130,246,0.3)); }
+.logo-title-group { display: flex; flex-direction: column; justify-content: center; line-height: 1.2; }
+.logo-main { font-size: 17px; font-weight: 700; color: #fff; white-space: nowrap; letter-spacing: 0.5px; }
+.logo-en { font-size: 10.5px; font-weight: 500; color: #94a3b8; white-space: nowrap; letter-spacing: 0.4px; }
 .logo-text { font-size: 22px; font-weight: 700; color: #fff; white-space: nowrap; letter-spacing: 0.5px; }
 
 .summary-pills { display: flex; gap: 8px; }
