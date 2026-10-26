@@ -64,23 +64,13 @@
           >
             <template #prefix-icon><search-icon /></template>
           </t-input>
-          <div v-if="systemSearch.trim()" class="system-search-results" role="listbox" aria-label="系统搜索结果">
-            <button
-              v-for="match in systemSearchMatches"
-              :key="match.id"
-              type="button"
-              class="system-search-option"
-              @click="locateProject(match)"
-            >
-              <span class="system-search-name">{{ match.name }}</span>
-              <span class="system-search-meta">{{ match.id }}{{ match.versionLabel ? ' · ' + match.versionLabel : '' }}</span>
-            </button>
-            <div v-if="!systemSearchMatches.length" class="system-search-empty">未找到匹配的系统</div>
-          </div>
         </div>
       </div>
+      <div v-if="systemSearch.trim() && !displayProjects.length" class="system-search-empty-state">
+        未找到匹配的系统，请更换关键词
+      </div>
       <!-- ====== 卡片网格 ====== -->
-      <section class="card-grid">
+      <section v-if="displayProjects.length" class="card-grid">
         <article
           v-for="item in displayProjects" :key="item.isGroup ? item.groupId : item.id"
           :id="'project-card-' + (item.groupId || item.id)"
@@ -268,7 +258,7 @@ docker ps --format '{{dockerContainersFormat}}'</pre>
 
 <!-- ================================================================ -->
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { MessagePlugin } from 'tdesign-vue-next'
 import { RefreshIcon, PlayIcon, StopIcon, HelpCircleIcon, PoweroffIcon, SearchIcon } from 'tdesign-icons-vue-next'
 
@@ -340,6 +330,8 @@ const dockerStatusDetail = computed(() => {
 const displayProjects = computed(() => {
   const groups = []
   const groupMap = new Map()
+  const filtering = Boolean(systemSearch.value.trim())
+  const matchedIds = filtering ? new Set(systemSearchMatches.value.map(project => project.id)) : null
 
   projects.value.forEach(p => {
     if (p.groupId) {
@@ -356,23 +348,30 @@ const displayProjects = computed(() => {
 
   return groups.map((g, index) => {
     if (g.isGroup) {
-      const activeLabel = activeVersions[g.groupId] || (g.versions['新版'] ? '新版' : Object.keys(g.versions)[0])
-      if (!activeVersions[g.groupId]) {
-        activeVersions[g.groupId] = activeLabel
-      }
+      const versionLabels = Object.keys(g.versions).sort((a, b) => b.localeCompare(a))
+      const visibleVersions = filtering
+        ? versionLabels.filter(label => matchedIds.has(g.versions[label].id))
+        : versionLabels
+      if (!visibleVersions.length) return null
+      const preferredLabel = activeVersions[g.groupId] || (g.versions['新版'] ? '新版' : versionLabels[0])
+      const activeLabel = visibleVersions.includes(preferredLabel) ? preferredLabel : visibleVersions[0]
       const activeProject = g.versions[activeLabel]
-      return { 
-        ...activeProject, 
-        isGroup: true, 
-        groupId: g.groupId, 
-        availableVersions: Object.keys(g.versions).sort((a,b) => b.localeCompare(a)), // 新版 before 旧版 
+      return {
+        ...activeProject,
+        isGroup: true,
+        groupId: g.groupId,
+        availableVersions: visibleVersions,
         activeVersion: activeLabel,
         originalIndex: index + 1
       }
     }
+    if (filtering && !matchedIds.has(g.id)) return null
     return { ...g, originalIndex: index + 1 }
-  })
+  }).filter(Boolean)
 })
+
+// 切换关键词时清除旧高亮，保持原有卡片编号和顺序
+watch(systemSearch, () => { locatedCardKey.value = '' })
 
 /* ---- 系统快速定位：不改变原有卡片排序与运行状态 ---- */
 function locateFirstMatch() {
@@ -611,21 +610,7 @@ onBeforeUnmount(() => clearInterval(timer))
 .system-search-field :deep(.t-input__wrap) { border-radius: 999px; }
 .system-search-field :deep(.t-input) { min-height: 36px; padding-inline: 14px; }
 
-.system-search-results {
-  position: absolute; z-index: 120; left: 0; right: 0; top: calc(100% + 6px);
-  max-height: 320px; overflow-y: auto;
-  background: #fff; border: 1px solid #e5e7eb; border-radius: 4px;
-  box-shadow: 0 8px 24px rgba(15,23,42,0.14);
-}
-.system-search-option {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  width: 100%; padding: 10px 12px; background: #fff; border: none;
-  border-bottom: 1px solid #f1f5f9; cursor: pointer; text-align: left; font-size: 13px;
-}
-.system-search-option:hover, .system-search-option:focus-visible { background: #f3f7ff; outline: none; }
-.system-search-name { color: #1f2937; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.system-search-meta { font-size: 12px; color: #64748b; white-space: nowrap; }
-.system-search-empty { padding: 12px; color: #8a95a8; font-size: 12px; }
+.system-search-empty-state { max-width: 1800px; margin: 28px auto 0; padding: 42px 16px; text-align: center; font-size: 13px; color: #8a95a8; }
 
 /* ===== 卡片网格 ===== */
 .card-grid {
