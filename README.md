@@ -16,6 +16,8 @@
 powershell -NoProfile -ExecutionPolicy Bypass -File .\start.ps1
 ```
 
+如果管理服务（8484）已经在运行，但之前清理了 `dist/`，再次执行 `start.ps1` 会先检测 `dist/index.html`，缺失时自动执行 `npm run build`，然后打开页面。也可以在项目根目录直接执行 `npm run build` 并刷新浏览器；不需要删除 `node_modules/`。
+
 停止门户及本次由门户启动的项目：
 
 ```powershell
