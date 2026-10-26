@@ -5,8 +5,8 @@
       <div class="top-bar-left">
         <div class="logo-area">
           <div class="logo-title-group">
-            <span class="logo-main">系统调度枢纽</span>
-            <span class="logo-en">System Scheduler Nexus</span>
+            <span class="logo-main">多系统指挥调整枢纽</span>
+            <span class="logo-en">Multi-System Command & Coordination Hub</span>
           </div>
         </div>
         <div class="summary-pills">
@@ -199,7 +199,7 @@
     <t-dialog v-model:visible="helpDialogVisible" header="系统启动与故障排查" width="min(760px, 94vw)" :footer="false">
       <div class="help-content">
         <h4>1. 确认访问地址与项目</h4>
-        <p>综合门户：<a :href="portalAddress" target="_blank" rel="noopener">{{ portalAddress }}</a>。业务系统请使用启动成功后卡片中的地址；API 端口不是网页入口。</p>
+        <p>多系统指挥调整枢纽地址：<a :href="portalAddress" target="_blank" rel="noopener">{{ portalAddress }}</a>。业务系统请使用启动成功后卡片中的地址；API 端口不是网页入口。</p>
         <t-select v-model="helpProjectId" aria-label="排查项目" :options="projects.map(p => ({ label: p.name, value: p.id }))" />
         <dl v-if="helpProject" class="dl">
           <div><dt>项目目录</dt><dd>{{ helpProject.directory || helpProject.folder }}</dd></div>
@@ -210,13 +210,13 @@
         <p v-if="helpProject?.fixedPorts">此项目固定使用上述 Web/API 端口，不支持自动换端口。</p>
         <h4>2. 先看启动错误和运行日志</h4>
         <p>点击卡片“运行日志”，检查最后一次启动后的错误。没有进程监听只表示该端口当前空闲，也可能是进程已退出、依赖失败或端口被 Windows 保留；不能据此认定系统正常。</p>
-        <p>日志文件位于综合门户目录的 <code>runtime/logs/{{ helpProjectId }}.log</code>。历史日志可能对应旧项目名称，以本次启动时间为准。</p>
-        <p>若综合门户自身打不开：在门户目录执行 <code>npm run start</code> 查看构建和启动错误，或检查 <code>runtime/portal.out.log</code> 与 <code>runtime/portal.err.log</code>。门户端口无监听时，先排查依赖与构建是否成功。</p>
+        <p>日志文件位于多系统指挥调整枢纽目录的 <code>runtime/logs/{{ helpProjectId }}.log</code>。历史日志可能对应旧项目名称，以本次启动时间为准。</p>
+        <p>若多系统指挥调整枢纽自身打不开：在门户目录执行 <code>npm run start</code> 查看构建和启动错误，或检查 <code>runtime/portal.out.log</code> 与 <code>runtime/portal.err.log</code>。门户端口无监听时，先排查依赖与构建是否成功。</p>
         <h4>3. 精确查询 Web 与 API 端口（PowerShell）</h4>
         <pre class="code-block">{{ helpPortCommand }}</pre>
         <p>只检查 Listen 状态的精确端口，查看 OwningProcess。若有结果，再核对进程路径和命令行（把 12345 换成查到的 PID）：</p>
         <pre class="code-block">Get-CimInstance Win32_Process -Filter "ProcessId = 12345" | Select-Object ProcessId, ExecutablePath, CommandLine</pre>
-        <p>确认属于哪个系统后，优先在所属门户或原启动终端正常停止。不要直接结束未知 PID、Docker、数据库或综合门户进程。</p>
+        <p>确认属于哪个系统后，优先在所属门户或原启动终端正常停止。不要直接结束未知 PID、Docker、数据库或多系统指挥调整枢纽进程。</p>
         <p>无监听却出现 EACCES / EPERM / 无法绑定时，检查 Windows 保留端口范围；不要擅自删除保留范围：</p>
         <pre class="code-block">netsh interface ipv4 show excludedportrange protocol=tcp</pre>
         <h4>4. 根据错误处理依赖</h4>
@@ -397,7 +397,7 @@ async function stopAll() { for (const i of projects.value) if (i.managed) await 
 async function exitPortal() {
   try {
     await api('/api/exit', { method: 'POST', body: '{}' })
-    MessagePlugin.success('调度枢纽服务已退出，您可以安全关闭此页面。')
+    MessagePlugin.success('多系统指挥调整枢纽服务已退出，您可以安全关闭此页面。')
   } catch (e) { MessagePlugin.error(e.message) }
 }
 
