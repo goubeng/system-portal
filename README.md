@@ -10,16 +10,16 @@
 
 ## 启动
 
-双击 `start-portal.ps1`，或在 PowerShell 中执行：
+双击 `start.ps1`，或在 PowerShell 中执行：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\start-portal.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\start.ps1
 ```
 
 停止门户及本次由门户启动的项目：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\stop-portal.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\stop.ps1
 ```
 
 ## 平台顶部操作
@@ -52,6 +52,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\stop-portal.ps1
 - 07 汇报材料：Web `3501`
 - 08 卫健XC统一门户：固定 Web/API `4010/4011`
 - 09 AI协作控制台：Web `4101`
+- 10 福建教育督导与调查系统：Web/API `4020/4021`
 
 上述为推荐端口，以 `config/projects.json` 为准。支持环境变量端口的项目在推荐端口被占用时每次增加 2，最多尝试 5 组；实际地址以卡片为准。08 的启动脚本固定使用 4010/4011，不支持自动回退。
 
@@ -74,6 +75,25 @@ Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue |
 - 无监听却报 EACCES/EPERM 时，用 `netsh interface ipv4 show excludedportrange protocol=tcp` 查看保留范围，不要直接删除保留范围。
 - 08 默认 DATABASE 模式通过 `docker exec postgres14` 访问 `nocodb_data`。Docker Desktop 窗口已打开或 5432 可连接不代表执行链正常。先确认 `docker info --format '{{.ServerVersion}}'` 有响应，再用 `docker ps` 检查 postgres14；长时间无响应可 Ctrl+C 取消，不应改为 Mock 掩盖故障。
 - 修改门户配置或后端后需重启门户。停止门户会影响其管理的业务进程，应先确认当前任务；门户不会自动重启 Docker 或共享数据库。
+
+## 目录用途与本地清理
+
+- **`src/`、`config/`、`lib/`、`server.js`、`start.ps1`、`stop.ps1`、`package.json`、`package-lock.json`**：源码、服务及启动配置，必须保留。
+- **`node_modules/`**：本机已安装的 Node 依赖，当前需要运行平台，**保留**；不要运行会清空它的命令。
+- **`dist/`**：Vite 编译产物，`npm run build` 或 `npm run start` 可以重新生成。管理服务直接从这里读取网页；平台正在运行时不要删除。
+- **`runtime/`**：仅本机运行状态和日志。启动后会自动创建 `runtime/logs/` 和 `portal.pid`；重启会写入 `portal.restart.status.json`、`portal.restart.out.log`、`portal.restart.err.log`，启动脚本可能写入 `portal.out.log` 与 `portal.err.log`。这些文件不应提交到 Git。
+- 清理旧日志时，先确认管理服务和其管理的业务系统已妥善停止；建议只删除不再需要的旧 `*.log`。**切勿在 8484 正在运行时删除 `runtime/` 或 `portal.pid`**，否则 `stop.ps1` 的 PID 校验可能失败。
+- 若停止服务后确需完全重置临时状态，可删除整个 `runtime/`，随后通过 `./start.ps1` 或 `npm run start` 重新生成；历史日志和重启诊断信息会丢失。
+- 旧版仓库曾误跟踪 `runtime/portal.pid`、`runtime/portal.restart.status.json`；本次清理后统一由 `.gitignore` 忽略 `runtime/`。**请先停止本机平台，再拉取涉及运行状态文件移除的提交，拉取后再启动平台。**
+- 不要用 `git clean -fdx` 进行清理，它可能删除被忽略的 `node_modules/`、`dist/` 和运行数据。
+
+## 维护原则
+
+- 平台只在本机 `127.0.0.1:8484` 提供管理能力，不能为方便其他设备访问而改成 `0.0.0.0`。
+- 平台启动时不自动启动任何业务系统；只有人工点击业务卡片才启动白名单内的项目，且仅能直接停止当前进程亲自管理的项目。
+- Docker Desktop 由人工启动，平台仅检测状态；不能自动启动、重启数据库或擅自创建、删除、迁移数据库。
+- 新增业务系统要保持独立运行能力、固定业务标识及独立端口；同时核对健康检查接口、进程识别和依赖关系。
+- Windows PowerShell 5.1 对不带 BOM 的中文脚本可能有编码问题，因此双击入口 `*.ps1` 尽量保持 ASCII，中文说明留在 README。
 
 ## 环境说明
 
