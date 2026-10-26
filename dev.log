@@ -1,0 +1,9 @@
+
+> system-portal@1.0.0 dev
+> vite --host 127.0.0.1 --port 5172
+
+
+  VITE v5.4.21  ready in 661 ms
+
+  ➜  Local:   http://127.0.0.1:5172/
+  ➜  press h + enter to show help
