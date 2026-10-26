@@ -11,16 +11,7 @@
     </section>
     <section v-else-if="portalClosed" class="portal-closed-screen" role="status" aria-live="polite">
       <div class="portal-closed-content">
-        <svg class="portal-closed-svg" viewBox="0 0 160 160" fill="none" aria-hidden="true" focusable="false">
-          <circle cx="80" cy="80" r="76" fill="#EFF6FF"/>
-          <circle cx="80" cy="80" r="62" stroke="#DBEAFE" stroke-width="1.5"/>
-          <rect x="34" y="39" width="92" height="73" rx="9" fill="#FFFFFF" stroke="#94A3B8" stroke-width="3"/>
-          <path d="M80 112V124M58 125H102" stroke="#64748B" stroke-width="3" stroke-linecap="round"/>
-          <path d="M80 55V77" stroke="#2563EB" stroke-width="4.5" stroke-linecap="round"/>
-          <path d="M64 65A23 23 0 1 0 96 65" stroke="#2563EB" stroke-width="4.5" stroke-linecap="round"/>
-          <circle cx="116" cy="110" r="13" fill="#10B981" stroke="#FFFFFF" stroke-width="3"/>
-          <path d="M110 110L114 114L122 106" stroke="#FFFFFF" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
+        <img class="portal-closed-image" :src="outIcon" alt="平台已关闭" />
         <h1 id="portal-closed-title" class="portal-closed-title" tabindex="-1">平台已关闭</h1>
         <p class="portal-closed-description">系统集指挥调度枢纽已执行关闭操作，当前页面不再提供系统管理功能。</p>
         <div class="portal-closed-divider"></div>
@@ -312,6 +303,7 @@ docker ps --format '{{dockerContainersFormat}}'</pre>
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { MessagePlugin } from 'tdesign-vue-next'
+import outIcon from './out.svg'
 import { RefreshIcon, PlayIcon, StopIcon, HelpCircleIcon, PoweroffIcon, SearchIcon } from 'tdesign-icons-vue-next'
 
 const projects = ref([])
@@ -637,7 +629,7 @@ onBeforeUnmount(() => {
   display: flex; flex-direction: column; align-items: center;
   max-width: 540px; width: 100%; text-align: center;
 }
-.portal-closed-svg { width: 160px; height: 160px; margin-bottom: 20px; }
+.portal-closed-image { display: block; width: min(320px, 78vw); height: auto; margin-bottom: 20px; }
 .portal-closed-title { font-size: 28px; font-weight: 600; color: #1f2937; line-height: 1.4; }
 .portal-closed-description { margin-top: 12px; color: #64748b; font-size: 14px; line-height: 1.8; }
 .portal-closed-divider { margin: 28px 0 20px; height: 1px; width: 100%; background: #e2e8f0; }
