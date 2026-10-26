@@ -16,6 +16,15 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\start-portal.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\stop-portal.ps1
 ```
 
+## 卡片来源：数据库
+
+门户的系统卡片直接读取「AI-PM 协同控制台」数据库里的 `pm_projects` 表（不再手工维护 `config/projects.json`；数据库读取失败时沿用上一次的卡片，并在页面上提示原因）。
+
+1. 复制 `config/data-source.example.json` 为 `config/data-source.json`（已加入 .gitignore，不会提交），填写 NocoDB 地址、API Token（与协同控制台「项目构建配置」里的全局 Session 相同）和 `pm_projects` 的表编号。
+2. 在协同控制台某项目的「自动化构建」页点击「登记到调度枢纽」，刷新门户页面即可看到该项目卡片，并可启动 / 停止；关闭「开通局域网访问」则只监听本机。
+3. 显示规则：`build_config.portal.enabled` 为 true 的项目显示；没有任何构建配置的历史项目，只要有本地路径、类型 npm/static 和 Web 端口也显示；`portal.enabled` 为 false 隐藏。项目目录必须位于门户允许的工作区内，否则跳过并给出提示。
+4. 启动 npm 项目时，缺少 `node_modules` 会先自动安装依赖；局域网开启时前端监听 0.0.0.0（接口仍只监听本机，经前端代理转发）。
+
 ## 端口编号
 
 - 门户：`8484`

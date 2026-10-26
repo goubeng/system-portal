@@ -3,3 +3,4 @@ dist/
 runtime/
 *.log
 doc
+config/data-source.json

@@ -1,0 +1,5 @@
+{
+  "nocodbUrl": "http://127.0.0.1:8080",
+  "token": "在这里填写 NocoDB 的 API Token（与 AI-PM 协同控制台「项目构建配置」中的全局 Session 相同）",
+  "tableId": "mm7rs1k66dyq9i1"
+}

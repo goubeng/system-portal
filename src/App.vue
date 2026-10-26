@@ -43,6 +43,8 @@
       </div>
     </header>
 
+    <t-alert v-if="source.name==='file'" class="source-alert" theme="warning" :close="false" :message="`卡片来自本地配置文件（只读备份）：${source.error||'数据库未连接'}。数据库恢复后点击刷新即可改为读取 pm_projects 表。`" />
+    <t-alert v-else-if="source.warnings?.length" class="source-alert" theme="info" :close="false" :message="source.warnings.join('；')" />
     <section class="system-grid">
       <article v-for="(card,index) in systemCards" :key="card.key" class="system-card" :class="`status-${card.item.status}`">
         <div class="card-topline">
@@ -234,21 +236,23 @@ const orderItems=computed(()=>orderDialog.ids.map(id=>projects.value.find(item=>
 const portalAccessUrl=computed(()=>portal.networkUrl || portal.url)
 const systemCards=computed(()=>{
   const groups=new Map()
+  const groupOf=project=>project.groupKey||project.name
   for(const project of projects.value){
-    const entries=groups.get(project.name)||[]
+    const entries=groups.get(groupOf(project))||[]
     entries.push(project)
-    groups.set(project.name,entries)
+    groups.set(groupOf(project),entries)
   }
   const versionedNames=new Set([...groups].filter(([,entries])=>entries.length===2 && entries.some(item=>item.lifecycle==='replacement')).map(([name])=>name))
   const handledNames=new Set()
   return projects.value.flatMap(project=>{
-    if(!versionedNames.has(project.name))return [{key:project.id,item:project,versions:null}]
-    if(handledNames.has(project.name))return []
-    handledNames.add(project.name)
-    const versions=groups.get(project.name)
+    const groupKey=groupOf(project)
+    if(!versionedNames.has(groupKey))return [{key:project.id,item:project,versions:null}]
+    if(handledNames.has(groupKey))return []
+    handledNames.add(groupKey)
+    const versions=groups.get(groupKey)
     const defaultVersion=versions.find(item=>item.lifecycle==='replacement')||versions[0]
-    const selectedId=selectedVersionIds[`versions:${project.name}`]||defaultVersion.id
-    return [{key:`versions:${project.name}`,item:versions.find(item=>item.id===selectedId)||defaultVersion,versions}]
+    const selectedId=selectedVersionIds[`versions:${groupKey}`]||defaultVersion.id
+    return [{key:`versions:${groupKey}`,item:versions.find(item=>item.id===selectedId)||defaultVersion,versions}]
   })
 })
 
@@ -265,10 +269,13 @@ async function api(url,options={}){
   return body
 }
 
+const source=reactive({name:'file',error:null,warnings:[]})
+
 async function bootstrap(){
   const data=await api('/api/bootstrap')
   token.value=data.token
   projects.value=data.projects
+  Object.assign(source,{name:'file',error:null,warnings:[]},data.source||{})
   Object.assign(portal,data.portal||{})
   assignInfrastructure(data.infrastructure)
 }
@@ -279,6 +286,7 @@ async function refreshStatus(silent=false){
   try{
     const data=await api('/api/status')
     projects.value=data.projects
+    Object.assign(source,{name:'file',error:null,warnings:[]},data.source||{})
     assignInfrastructure(data.infrastructure)
   }catch(error){if(!silent)MessagePlugin.error(error.message)}
   finally{refreshing.value=false}
@@ -512,6 +520,7 @@ onMounted(async()=>{
 .infra-tag.is-muted{background:rgba(139,151,175,.16);color:#a9b5c9}
 .status-dot{width:10px;height:10px;border-radius:50%;background:#6f7b8f;box-shadow:0 0 0 4px rgba(111,123,143,.16)}
 .status-dot.is-up{background:#22c98b;box-shadow:0 0 0 4px rgba(34,201,139,.15)}
+.source-alert{width:calc(100% - 96px);max-width:1680px;margin:0 auto 12px}
 .system-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:15px;width:calc(100% - 96px);max-width:1680px;margin:0 auto}
 .system-card{display:flex;flex-direction:column;min-height:300px;padding:18px;border:1px solid #dfe5ef;border-top:3px solid #c8d0dc;background:#fff;box-shadow:0 4px 18px rgba(33,52,85,.055);transition:.18s ease}
 .system-card.status-healthy{border-top:3px solid #20b982}

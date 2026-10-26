@@ -5,6 +5,7 @@ const net=require('net')
 const os=require('os')
 const path=require('path')
 const {execFile,spawn}=require('child_process')
+const {readSourceConfig,loadCards}=require('./lib/card-source')
 
 const root=__dirname
 const workspaceRoot=path.resolve(root,'..')
@@ -23,10 +24,15 @@ const lastExit=new Map()
 const locks=new Set()
 
 fs.mkdirSync(logRoot,{recursive:true})
-let projects=loadProjects()
+// 卡片来源：优先读取 AI-PM 协同控制台数据库的 pm_projects 表；数据库不可用时回退到 config/projects.json（只读备份）
+const sourceConfig=readSourceConfig(root)
+const cardSource={name:'file',error:sourceConfig.configured?null:'未配置数据库访问凭据，使用本地配置文件',warnings:[],refreshedAt:null}
+let projects=loadFileProjects()
 let projectMap=new Map(projects.map(item=>[item.id,item]))
+let refreshPromise=null
+let lastRefresh=0
 
-function loadProjects(){
+function loadFileProjects(){
   const items=JSON.parse(fs.readFileSync(projectConfigPath,'utf8')).map(item=>{
     const projectPath=path.resolve(root,item.relativePath)
     if(!projectRoots.some(projectRoot=>isInsideRoot(projectPath,projectRoot)))throw new Error(`Project ${item.id} is outside workspace.`)
@@ -35,6 +41,36 @@ function loadProjects(){
   if(new Set(items.map(item=>item.id)).size!==items.length)throw new Error('Duplicate project IDs.')
   return sortProjects(items,readProjectOrder(items))
 }
+
+function applyProjects(items){
+  projects=sortProjects(items,readProjectOrder(items))
+  projectMap=new Map(projects.map(item=>[item.id,item]))
+}
+
+/** 从数据库刷新卡片（5 秒内复用结果）；失败时保留上一次的卡片，并把原因带给页面。 */
+function refreshProjects(force=false){
+  if(!sourceConfig.configured)return Promise.resolve()
+  if(refreshPromise)return refreshPromise
+  if(!force && Date.now()-lastRefresh<5000)return Promise.resolve()
+  refreshPromise=(async()=>{
+    try{
+      const result=await loadCards(sourceConfig,{
+        isAllowedPath:target=>projectRoots.some(projectRoot=>isInsideRoot(target,projectRoot)),
+        resolveDirectory:directory=>path.resolve(directory)
+      })
+      applyProjects(result.projects)
+      Object.assign(cardSource,{name:'database',error:null,warnings:result.warnings,refreshedAt:new Date().toISOString()})
+    }catch(error){
+      Object.assign(cardSource,{error:error.message})
+    }finally{
+      lastRefresh=Date.now()
+      refreshPromise=null
+    }
+  })()
+  return refreshPromise
+}
+
+function sourceInfo(){return {name:cardSource.name,error:cardSource.error,warnings:cardSource.warnings,refreshedAt:cardSource.refreshedAt}}
 
 function isInsideRoot(target,projectRoot){
   const relative=path.relative(projectRoot,target)
@@ -119,7 +155,7 @@ function requestUrl(url,timeout=1200){
 }
 
 function candidatePorts(project){
-  return Array.from({length:5},(_,offset)=>({
+  return Array.from({length:project.fixedPorts?1:5},(_,offset)=>({
     webPort:project.webPort+offset*2,
     apiPort:project.apiPort ? project.apiPort+offset*2 : null,
     fallback:offset
@@ -171,11 +207,15 @@ async function probeProject(project,ports){
   if(project.healthType==='json-ok'){
     try{return JSON.parse(response.body).ok===true}catch{return false}
   }
-  return typeof project.healthMarker==='string' && response.body.includes(project.healthMarker)
+  if(!project.healthMarker)return true
+  return response.body.includes(project.healthMarker)
 }
 
 async function findExternal(project){
-  const results=await Promise.all(candidatePorts(project).map(async ports=>await probeProject(project,ports) ? ports : null))
+  // 没有页面标识的 html 卡片无法区分端口上是不是本系统，只检查登记的端口
+  const unmarked=project.healthType!=='json-ok' && !project.healthMarker
+  const candidates=project.fixedPorts||unmarked?candidatePorts(project).slice(0,1):candidatePorts(project)
+  const results=await Promise.all(candidates.map(async ports=>await probeProject(project,ports) ? ports : null))
   return results.find(Boolean)||null
 }
 
@@ -245,24 +285,27 @@ async function waitForHealthy(project,runtime,timeoutMs){
 }
 
 function spawnProject(project,ports){
+  // 卡片的“局域网访问”开关：开启时监听 0.0.0.0，关闭则只监听本机
+  const bindHost=project.lan===false?'127.0.0.1':'0.0.0.0'
   let command
   let args
   if(project.kind==='static'){
     command=process.execPath
-    args=[path.join(root,'lib','static-server.js'),`--root=${project.projectPath}`,`--port=${ports.webPort}`,`--entry=${project.entry}`,'--host=0.0.0.0']
+    args=[path.join(root,'lib','static-server.js'),`--root=${project.projectPath}`,`--port=${ports.webPort}`,`--entry=${project.entry}`,`--host=${bindHost}`]
   }else{
-    if(!fs.existsSync(path.join(project.projectPath,'node_modules')))throw new Error('项目依赖不存在，请先在项目目录执行 npm ci')
+    // 由构建器生成的项目（autoInstall）首次启动会自行执行 npm install；其他项目必须已安装依赖
+    if(!project.autoInstall && !fs.existsSync(path.join(project.projectPath,'node_modules')))throw new Error('项目依赖不存在，请先在项目目录执行 npm ci')
     if(process.platform==='win32'){
       command=process.env.ComSpec||'C:\\Windows\\System32\\cmd.exe'
-      args=['/d','/s','/c','npm.cmd','run','dev','--','--host','0.0.0.0','--port',String(ports.webPort)]
+      args=['/d','/s','/c','npm.cmd','run','dev','--','--host',bindHost,'--port',String(ports.webPort)]
     }else{
       command='npm'
-      args=['run','dev','--','--host','0.0.0.0','--port',String(ports.webPort)]
+      args=['run','dev','--','--host',bindHost,'--port',String(ports.webPort)]
     }
   }
   const env={...process.env,WEB_PORT:String(ports.webPort),PORT_STRICT:'true',BROWSER:'none'}
   if(ports.apiPort){env.API_PORT=String(ports.apiPort);env.PORT=String(ports.apiPort)}
-  const child=spawn(command,args,{cwd:project.projectPath,env,windowsHide:true,stdio:['ignore','pipe','pipe']})
+  const child=spawn(command,args,{cwd:project.projectPath,env,windowsHide:true,detached:process.platform!=='win32',stdio:['ignore','pipe','pipe']})
   child.stdout.on('data',value=>appendLog(project.id,'out',value))
   child.stderr.on('data',value=>appendLog(project.id,'err',value))
   child.once('error',error=>appendLog(project.id,'error',error.message))
@@ -287,7 +330,8 @@ async function startProject(project){
     const runtime={child,ports,startedAt:Date.now()}
     managed.set(project.id,runtime)
     appendLog(project.id,'portal',`启动 ${project.name}，Web=${ports.webPort}${ports.apiPort?` API=${ports.apiPort}`:''}`)
-    try{await waitForHealthy(project,runtime,project.kind==='static'?10000:30000)}
+    const installing=project.autoInstall && !fs.existsSync(path.join(project.projectPath,'node_modules'))
+    try{await waitForHealthy(project,runtime,project.kind==='static'?10000:installing?300000:30000)}
     catch(error){await stopRuntime(project.id,runtime);throw error}
     return projectStatus(project)
   }finally{locks.delete(project.id)}
@@ -303,7 +347,10 @@ async function stopRuntime(id,runtime){
     await execFileResult('taskkill.exe',['/PID',String(runtime.child.pid),'/T'],{timeout:5000})
     await new Promise(resolve=>setTimeout(resolve,800))
     if(runtime.child.exitCode===null)await execFileResult('taskkill.exe',['/PID',String(runtime.child.pid),'/T','/F'],{timeout:5000})
-  }else runtime.child.kill('SIGTERM')
+  }else{
+    // 子进程单独成组，整组终止（npm → node → vite / 接口服务）
+    try{process.kill(-runtime.child.pid,'SIGTERM')}catch{runtime.child.kill('SIGTERM')}
+  }
 }
 
 async function stopProject(project){
@@ -356,11 +403,15 @@ function authorizedMutation(req){
 
 async function apiHandler(req,res,url){
   if(req.method==='GET' && url.pathname==='/api/bootstrap'){
+    await refreshProjects(true)
     const statuses=await Promise.all(projects.map(projectStatus))
-    return send(res,200,{token:csrfToken,projects:statuses,infrastructure:await infrastructureStatus(),portal:{host:portalHost,port:portalPort,...portalUrls()}})
+    return send(res,200,{token:csrfToken,projects:statuses,source:sourceInfo(),infrastructure:await infrastructureStatus(),portal:{host:portalHost,port:portalPort,...portalUrls()}})
   }
-  if(req.method==='GET' && url.pathname==='/api/status')return send(res,200,{projects:await Promise.all(projects.map(projectStatus)),infrastructure:await infrastructureStatus()})
-  const logMatch=url.pathname.match(/^\/api\/projects\/(\d{2})\/logs$/)
+  if(req.method==='GET' && url.pathname==='/api/status'){
+    await refreshProjects()
+    return send(res,200,{projects:await Promise.all(projects.map(projectStatus)),source:sourceInfo(),infrastructure:await infrastructureStatus()})
+  }
+  const logMatch=url.pathname.match(/^\/api\/projects\/([\w.-]+)\/logs$/)
   if(req.method==='GET' && logMatch){
     const tail=Math.min(300,Math.max(1,Number(url.searchParams.get('tail'))||120))
     if(!projectMap.has(logMatch[1]))return send(res,404,{message:'项目不存在'})
@@ -369,6 +420,7 @@ async function apiHandler(req,res,url){
   if(req.method==='POST' && !authorizedMutation(req))return send(res,403,{message:'请求校验失败，请刷新门户后重试'})
   if(req.method==='POST' && url.pathname==='/api/projects/order'){
     const body=await readJsonBody(req)
+    await refreshProjects(true)
     reorderProjects(body.ids)
     return send(res,200,{projects:await Promise.all(projects.map(projectStatus))})
   }
@@ -381,8 +433,9 @@ async function apiHandler(req,res,url){
     setTimeout(()=>shutdown(),120).unref()
     return
   }
-  const actionMatch=url.pathname.match(/^\/api\/projects\/(\d{2})\/(start|stop)$/)
+  const actionMatch=url.pathname.match(/^\/api\/projects\/([\w.-]+)\/(start|stop)$/)
   if(req.method==='POST' && actionMatch){
+    await refreshProjects()
     const project=projectMap.get(actionMatch[1])
     if(!project)return send(res,404,{message:'项目不存在'})
     const result=actionMatch[2]==='start'?await startProject(project):await stopProject(project)
