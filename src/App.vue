@@ -34,6 +34,9 @@
         </div>
       </div>
       <div class="top-bar-right">
+        <a class="tb-action-btn tb-github" href="https://github.com/goubeng/system-portal/tree/main" target="_blank" rel="noopener noreferrer" title="在 GitHub 打开 main 分支">
+          <link-icon /> GitHub
+        </a>
         <button class="tb-action-btn tb-help" @click="helpDialogVisible = true">
           <help-circle-icon /> 帮助
         </button>
@@ -47,11 +50,40 @@
     </header>
 
     <div class="main-content" style="padding-bottom: 40px; overflow-y: auto; flex: 1;">
+      <div class="system-search-toolbar">
+        <div class="system-search-field">
+          <t-input
+            v-model="systemSearch"
+            clearable
+            aria-label="搜索系统"
+            placeholder="搜索系统名称、编号或关键词，回车快速定位"
+            @keydown.enter.prevent="locateFirstMatch"
+            @keydown.esc="systemSearch = ''"
+          >
+            <template #prefix-icon><search-icon /></template>
+          </t-input>
+          <div v-if="systemSearch.trim()" class="system-search-results" role="listbox" aria-label="系统搜索结果">
+            <button
+              v-for="match in systemSearchMatches"
+              :key="match.id"
+              type="button"
+              class="system-search-option"
+              @click="locateProject(match)"
+            >
+              <span class="system-search-name">{{ match.name }}</span>
+              <span class="system-search-meta">{{ match.id }}{{ match.versionLabel ? ' · ' + match.versionLabel : '' }}</span>
+            </button>
+            <div v-if="!systemSearchMatches.length" class="system-search-empty">未找到匹配的系统</div>
+          </div>
+        </div>
+        <span class="system-search-tip">匹配名称、编号、描述、技术栈；点击结果定位卡片</span>
+      </div>
       <!-- ====== 卡片网格 ====== -->
       <section class="card-grid">
         <article
           v-for="item in displayProjects" :key="item.isGroup ? item.groupId : item.id"
-          class="card" :class="[`card--${item.status}`, item.lifecycle !== 'active' ? `card--${item.lifecycle}` : '']">
+          :id="'project-card-' + (item.groupId || item.id)"
+          class="card" :class="[`card--${item.status}`, item.lifecycle !== 'active' ? `card--${item.lifecycle}` : '', { 'card--located': locatedCardKey === (item.groupId || item.id) }]">
 
           <!-- 头部行 -->
           <div class="card-head">
@@ -235,11 +267,28 @@ docker ps --format '{{dockerContainersFormat}}'</pre>
 
 <!-- ================================================================ -->
 <script setup>
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { MessagePlugin } from 'tdesign-vue-next'
-import { RefreshIcon, PlayIcon, StopIcon, HelpCircleIcon, PoweroffIcon } from 'tdesign-icons-vue-next'
+import { RefreshIcon, PlayIcon, StopIcon, HelpCircleIcon, LinkIcon, PoweroffIcon, SearchIcon } from 'tdesign-icons-vue-next'
 
 const projects = ref([])
+const systemSearch = ref('')
+const locatedCardKey = ref('')
+const systemSearchMatches = computed(() => {
+  const keyword = systemSearch.value.trim().toLocaleLowerCase()
+  if (!keyword) return []
+  return projects.value.filter(project => [
+    project.id,
+    project.groupId,
+    project.name,
+    project.shortName,
+    project.description,
+    project.implementation,
+    project.versionLabel,
+    project.database,
+    ...(project.techStack || [])
+  ].filter(Boolean).join(' ').toLocaleLowerCase().includes(keyword))
+})
 const infrastructure = reactive({ docker: {}, postgres: {}, nocodb: {} })
 const helpDialogVisible = ref(false)
 const helpProjectId = ref('08')
@@ -321,6 +370,20 @@ const displayProjects = computed(() => {
     return { ...g, originalIndex: index + 1 }
   })
 })
+
+/* ---- 系统快速定位：不改变原有卡片排序与运行状态 ---- */
+function locateFirstMatch() {
+  if (systemSearchMatches.value.length) locateProject(systemSearchMatches.value[0])
+  else if (systemSearch.value.trim()) MessagePlugin.warning('未找到匹配的系统')
+}
+
+async function locateProject(project) {
+  if (project.groupId && project.versionLabel) activeVersions[project.groupId] = project.versionLabel
+  const key = project.groupId || project.id
+  locatedCardKey.value = key
+  await nextTick()
+  document.getElementById('project-card-' + key)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+}
 
 /* ---- URL ---- */
 function buildUrls(item, entry) {
@@ -510,6 +573,9 @@ onBeforeUnmount(() => clearInterval(timer))
   border: 1px solid transparent; outline: none;
 }
 .tb-action-btn svg { width: 13px; height: 13px; }
+.tb-github { text-decoration: none; background: rgba(255,255,255,0.05); color: #cbd5e1; border-color: rgba(255,255,255,0.1); white-space: nowrap; }
+.tb-github:hover { background: rgba(255,255,255,0.15); color: #fff; }
+.tb-github:focus-visible { outline: 2px solid #60a5fa; outline-offset: 2px; }
 
 .tb-help { background: rgba(255,255,255,0.05); color: #cbd5e1; border-color: rgba(255,255,255,0.1); }
 .tb-help:hover { background: rgba(255,255,255,0.15); color: #fff; transform: translateY(-1px); }
@@ -532,6 +598,29 @@ onBeforeUnmount(() => clearInterval(timer))
 .tb-exit:hover { background: #f59e0b; color: #fff; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(245,158,11,0.2); }
 .tb-exit:active { transform: translateY(0); }
 
+/* ===== 系统查询与卡片定位 ===== */
+.system-search-toolbar {
+  display: flex; align-items: center; gap: 16px;
+  max-width: 1800px; margin: 0 auto; padding: 20px 28px 0;
+}
+.system-search-field { position: relative; width: min(420px, 100%); flex-shrink: 0; }
+.system-search-results {
+  position: absolute; z-index: 120; left: 0; right: 0; top: calc(100% + 6px);
+  max-height: 320px; overflow-y: auto;
+  background: #fff; border: 1px solid #e5e7eb; border-radius: 4px;
+  box-shadow: 0 8px 24px rgba(15,23,42,0.14);
+}
+.system-search-option {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  width: 100%; padding: 10px 12px; background: #fff; border: none;
+  border-bottom: 1px solid #f1f5f9; cursor: pointer; text-align: left; font-size: 13px;
+}
+.system-search-option:hover, .system-search-option:focus-visible { background: #f3f7ff; outline: none; }
+.system-search-name { color: #1f2937; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.system-search-meta { font-size: 12px; color: #64748b; white-space: nowrap; }
+.system-search-empty { padding: 12px; color: #8a95a8; font-size: 12px; }
+.system-search-tip { font-size: 12px; color: #64748b; }
+
 /* ===== 卡片网格 ===== */
 .card-grid {
   display: grid;
@@ -539,7 +628,7 @@ onBeforeUnmount(() => clearInterval(timer))
   gap: 20px;
   max-width: 1800px;
   margin: 0 auto;
-  padding: 24px 28px;
+  padding: 20px 28px 24px;
 }
 
 /* ===== 单张卡片 ===== */
@@ -552,8 +641,9 @@ onBeforeUnmount(() => clearInterval(timer))
   border-top: 4px solid #d1d5db;
   box-shadow: 0 2px 4px rgba(0,0,0,0.02);
   transition: all .25s ease;
-  position: relative;
+  position: relative; scroll-margin-top: 80px;
 }
+.card--located { outline: 2px solid #0052d9; outline-offset: 2px; box-shadow: 0 0 0 5px rgba(0,82,217,0.1); }
 .card:hover { transform: translateY(-4px); box-shadow: 0 12px 24px rgba(0,0,0,0.06); border-color: #d1d5db; }
 .card--healthy { border-top-color: #10b981; }
 .card--external { border-top-color: #f59e0b; }
@@ -724,11 +814,16 @@ onBeforeUnmount(() => clearInterval(timer))
 /* ===== 响应式 ===== */
 @media (max-width: 1500px) { .card-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 1100px) {
+  .system-search-toolbar { padding: 16px 16px 0; }
   .card-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; padding: 16px; }
   .top-bar { flex-wrap: wrap; height: auto; padding: 12px 16px; gap: 12px; }
   .top-bar-center { order: 3; width: 100%; justify-content: flex-start; flex-wrap: wrap; }
 }
 @media (max-width: 700px) {
+  .system-search-toolbar { padding: 12px 12px 0; }
+  .system-search-field { width: 100%; }
+  .system-search-tip { display: none; }
+  .top-bar-right { flex-wrap: wrap; }
   .card-grid { grid-template-columns: 1fr; padding: 12px; gap: 12px; }
   .top-bar-center { display: none; }
 }
