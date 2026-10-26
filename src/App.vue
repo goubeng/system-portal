@@ -1,8 +1,8 @@
 <template>
-  <main class="portal-page" :class="{ 'portal-page--closed': portalClosed }">
+  <main class="portal-page" :class="{ 'portal-page--closed': portalClosed, 'portal-page--restarting': restartingPortal }">
     <section v-if="restartingPortal" class="portal-closed-screen" role="status" aria-live="polite">
       <div class="portal-closed-content">
-        <div class="portal-restarting-icon"><refresh-icon /></div>
+        <img class="portal-restarting-image" :src="restartIcon" alt="平台正在重启" />
         <h1 class="portal-closed-title">正在重启平台</h1>
         <p class="portal-closed-description">系统集指挥调度枢纽正在重新启动，服务恢复后页面将自动刷新。</p>
         <p v-if="restartNotice" class="portal-restart-warning">{{ restartNotice }}</p>
@@ -304,6 +304,7 @@ docker ps --format '{{dockerContainersFormat}}'</pre>
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { MessagePlugin } from 'tdesign-vue-next'
 import outIcon from './out.svg'
+import restartIcon from './restart.svg'
 import { RefreshIcon, PlayIcon, StopIcon, HelpCircleIcon, PoweroffIcon, SearchIcon } from 'tdesign-icons-vue-next'
 
 const projects = ref([])
@@ -647,10 +648,25 @@ onBeforeUnmount(() => {
 .portal-closed-address { margin-top: 12px; color: #64748b; font-size: 12px; }
 .portal-closed-note { margin-top: 32px; color: #94a3b8; font-size: 12px; }
 .portal-closed-title:focus { outline: none; }
-.portal-restarting-icon { display: flex; align-items: center; justify-content: center; width: 132px; height: 132px; margin-bottom: 24px; border-radius: 50%; background: #eff6ff; color: #2563eb; }
-.portal-restarting-icon svg { width: 64px; height: 64px; animation: portal-restart-spin 2s linear infinite; }
+.portal-page--restarting { background: #fff; }
+.portal-restarting-image {
+  display: block;
+  width: min(460px, 86vw);
+  height: auto;
+  max-height: 48vh;
+  object-fit: contain;
+  margin-bottom: 12px;
+  transform-origin: center bottom;
+  animation: portal-restart-float 3s ease-in-out infinite;
+}
 .portal-restart-warning { margin: 20px 0; color: #b45309; line-height: 1.7; }
-@keyframes portal-restart-spin { to { transform: rotate(360deg); } }
+@keyframes portal-restart-float {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-9px) scale(1.015); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .portal-restarting-image { animation: none; }
+}
 
 /* ===== 顶栏 (暗色现代风) ===== */
 .top-bar {
