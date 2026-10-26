@@ -234,11 +234,18 @@
     <t-dialog v-model:visible="restartConfirmVisible" header="重启平台" placement="center" width="460px" :footer="false">
       <div class="restart-confirm-message">
         <p>确认重启“系统集指挥调度枢纽”吗？这将重新启动本机 8484 管理服务，服务恢复后页面会自动刷新。</p>
-        <p>不会主动停止业务系统，但原平台启动的服务可能在重启后显示为“外部运行”，无法再由本平台直接停止。</p>
+        <div class="restart-confirm-warning">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+            <circle cx="12" cy="12" r="9" />
+            <path d="M12 7.5v5.5" />
+            <circle cx="12" cy="16.5" r="1" fill="currentColor" stroke="none" />
+          </svg>
+          <p>不会主动停止业务系统，但原平台启动的服务可能在重启后显示为“外部运行”，无法再由本平台直接停止。</p>
+        </div>
       </div>
       <div class="restart-confirm-actions">
-        <t-button size="small" variant="outline" @click="restartConfirmVisible = false">取消</t-button>
-        <t-button size="small" theme="primary" :loading="restartingPortal" @click="restartPortal">确认重启</t-button>
+        <t-button size="medium" variant="outline" @click="restartConfirmVisible = false">取消</t-button>
+        <t-button size="medium" theme="primary" :loading="restartingPortal" @click="restartPortal">确认重启</t-button>
       </div>
     </t-dialog>
     <!-- ====== 日志弹窗 ====== -->
@@ -750,7 +757,9 @@ onBeforeUnmount(() => {
 .system-search-field { position: relative; width: min(420px, 100%); }
 .stop-all-button { position: absolute; right: 28px; top: 20px; height: 36px; white-space: nowrap; }
 .restart-confirm-message { color: #475569; font-size: 13px; line-height: 1.8; }
-.restart-confirm-message p + p { margin-top: 12px; color: #92400e; }
+.restart-confirm-warning { display: flex; align-items: flex-start; gap: 8px; margin-top: 12px; color: #92400e; }
+.restart-confirm-warning svg { width: 16px; height: 16px; flex-shrink: 0; margin-top: 3px; }
+.restart-confirm-warning p { flex: 1; }
 .restart-confirm-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px; }
 .system-search-field :deep(.t-input),
 .system-search-field :deep(.t-input__wrap) { border-radius: 999px; }
