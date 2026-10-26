@@ -296,7 +296,7 @@ async function apiHandler(req,res,url){
   }
   if(req.method==='POST' && url.pathname==='/api/infrastructure/docker/start')return send(res,200,{infrastructure:await startDocker()})
   if(req.method==='POST' && url.pathname==='/api/exit') {
-    send(res, 200, { message: '多系统指挥调整枢纽已退出' })
+    send(res, 200, { message: '多系统指挥调度枢纽已退出' })
     setTimeout(() => process.exit(0), 1000)
     return
   }

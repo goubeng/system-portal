@@ -1,6 +1,6 @@
-# 多系统指挥调整枢纽（Multi-System Command & Coordination Hub）
+# 多系统指挥调度枢纽（Multi-System Command & Coordination Hub）
 
-多系统指挥调整枢纽地址固定为 `http://127.0.0.1:8484`，用于统一查看、启动、停止、调度和打开多个业务系统。
+多系统指挥调度枢纽地址固定为 `http://127.0.0.1:8484`，用于统一查看、启动、停止、调度和打开多个业务系统。
 
 ## 快捷操作
 
@@ -43,7 +43,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\stop-portal.ps1
 
 ## 启动失败排查
 
-- 多系统指挥调整枢纽目录为 `E:\AI\N8N-project\机关大院\system-portal`，入口是 `http://127.0.0.1:8484/`。
+- 多系统指挥调度枢纽目录为 `E:\AI\N8N-project\机关大院\system-portal`，入口是 `http://127.0.0.1:8484/`。
 - 卫健XC统一门户目录为 `E:\AI\N8N-project\机关大院\unified-health-portal`，网页入口为 `http://127.0.0.1:4010/`，健康接口为 `/api/portal/health`。API 4011 不是网页入口。
 - 先看卡片“运行日志”及 `runtime/logs/<项目编号>.log` 最后一次启动后的错误。门户自身启动失败则看 `runtime/portal.out.log` 和 `runtime/portal.err.log`，或在门户目录执行 `npm run start` 查看构建错误。
 - 端口没有监听只表示当前空闲；进程退出、依赖失败或 Windows 保留端口也会导致无法启动。用 PowerShell 精确查询 Web/API：
@@ -62,7 +62,7 @@ Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue |
 ## 环境说明
 
 - 原生静态项目由门户自带的 Node 静态服务托管，不需要安装依赖。
-- 01、02、05 也可分别进入各自项目目录执行 `npm run dev` 独立运行；多系统指挥调整枢纽不是它们的必需依赖。
+- 01、02、05 也可分别进入各自项目目录执行 `npm run dev` 独立运行；多系统指挥调度枢纽不是它们的必需依赖。
 - Vue 项目必须保留各自 `node_modules`；如果卡片提示依赖不存在，请进入对应项目执行 `npm ci`。
 - Docker Desktop 由人工打开，门户仅检测当前启动状态，不提供 Docker 启动按钮。顶部根据 Desktop 进程状态显示“已启动”“未启动，请先打开”或“启动状态待确认”；未启动时请手动打开，待确认时请核对软件是否已打开。引擎健康仅作为悬停诊断，检测超时不会被当成软件未打开，也不会仅因此拦截项目启动。
 - 门户不会自动建库、删库、迁移数据库，也不会停止并非由当前门户启动的进程。
