@@ -29,6 +29,7 @@ const managed=new Map()
 const logs=new Map()
 const lastExit=new Map()
 const locks=new Set()
+let restartPending=false
 
 fs.mkdirSync(logRoot,{recursive:true})
 const projects=JSON.parse(fs.readFileSync(path.join(root,'config','projects.json'),'utf8')).map(item=>{
@@ -295,6 +296,24 @@ async function apiHandler(req,res,url){
     return send(res,200,{project:result})
   }
   if(req.method==='POST' && url.pathname==='/api/infrastructure/docker/start')return send(res,200,{infrastructure:await startDocker()})
+  if(req.method==='POST' && url.pathname==='/api/restart') {
+    if(restartPending)return send(res,409,{message:'平台正在重启，请勿重复操作'})
+    const helper=path.join(root,'lib','restart-portal.js')
+    if(!fs.existsSync(helper))return send(res,500,{message:'缺少平台重启脚本，请检查项目文件'})
+    try {
+      await new Promise((resolve,reject)=>{
+        const child=spawn(process.execPath,[helper],{cwd:root,detached:true,windowsHide:true,stdio:'ignore'})
+        child.once('error',reject)
+        child.once('spawn',()=>{child.unref();resolve()})
+      })
+    } catch(error) {
+      return send(res,500,{message:`启动重启程序失败：${error.message}`})
+    }
+    restartPending=true
+    send(res,202,{message:'系统集指挥调度枢纽正在重启',previousPid:process.pid})
+    setTimeout(()=>process.exit(0),800)
+    return
+  }
   if(req.method==='POST' && url.pathname==='/api/exit') {
     send(res, 200, { message: '系统集指挥调度枢纽已退出' })
     setTimeout(() => process.exit(0), 1000)
