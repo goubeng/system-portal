@@ -87,8 +87,8 @@
             <template #prefix-icon><search-icon /></template>
           </t-input>
         </div>
-        <t-button class="stop-all-button" theme="danger" variant="outline" size="small" :loading="stoppingAll" :disabled="exitingPortal || restartingPortal" @click="stopAll">
-          <stop-icon /> 停止所有系统服务
+        <t-button class="stop-all-button" theme="danger" variant="outline" shape="round" :loading="stoppingAll" :disabled="exitingPortal || restartingPortal" @click="stopAll">
+          <template #icon><stop-circle-icon /></template>停止所有系统服务
         </t-button>
       </div>
       <div v-if="systemSearch.trim() && !displayProjects.length" class="system-search-empty-state">
@@ -304,7 +304,7 @@ docker ps --format '{{dockerContainersFormat}}'</pre>
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { MessagePlugin } from 'tdesign-vue-next'
 import outIcon from './out.svg'
-import { RefreshIcon, PlayIcon, StopIcon, HelpCircleIcon, PoweroffIcon, SearchIcon } from 'tdesign-icons-vue-next'
+import { RefreshIcon, PlayIcon, StopCircleIcon, HelpCircleIcon, PoweroffIcon, SearchIcon } from 'tdesign-icons-vue-next'
 
 const projects = ref([])
 const portalClosed = ref(false)
@@ -750,7 +750,15 @@ onBeforeUnmount(() => {
   max-width: 1800px; margin: 0 auto; padding: 20px 28px 0;
 }
 .system-search-field { position: relative; width: min(420px, 100%); }
-.stop-all-button { position: absolute; right: 28px; top: 20px; height: 36px; white-space: nowrap; }
+.stop-all-button {
+  position: absolute; right: 28px; top: 20px;
+  height: 36px; line-height: 34px; padding: 0 16px;
+  border-radius: 999px !important; font-size: 13px !important;
+  white-space: nowrap; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  box-sizing: border-box; transition: all 0.2s ease;
+}
+.stop-all-button :deep(.t-button__text) { font-size: 13px !important; }
+.stop-all-button :deep(.t-icon) { font-size: 14px; }
 .restart-confirm-message { color: #475569; font-size: 13px; line-height: 1.8; }
 .restart-confirm-warning { display: flex; align-items: flex-start; gap: 8px; margin-top: 12px; color: #92400e; }
 .restart-confirm-warning svg { width: 16px; height: 16px; flex-shrink: 0; margin-top: 3px; }
