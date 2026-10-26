@@ -25,7 +25,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\stop-portal.ps1
 ## 平台顶部操作
 
 - “停止所有系统服务”与居中的系统搜索框位于同一行，按钮靠右显示；仅停止当前枢纽管理的业务项目，不会主动停止 Docker Desktop、PostgreSQL、NocoDB 或从外部启动的系统。
-- 顶部“重启平台”位于“关闭平台”旁，专门重启系统集指挥调度枢纽的本机管理服务（8484），并非刷新浏览器。确认后，平台派生内部辅助进程，等待旧进程释放 8484，再执行 `npm run portal`（重新构建并启动）；页面根据新的进程 PID 自动刷新。
+- 顶部“重启平台”位于“关闭平台”旁，专门重启系统集指挥调度枢纽的本机管理服务（8484），并非刷新浏览器。确认后，平台派生内部辅助进程，等待旧进程释放 8484，再启动新服务；页面显示 `src/restart.svg` 插画的轻微浮动动画，并根据新的进程 PID 自动刷新。
 - 重启流程先在原服务上使用 Node 直接执行 Vite 构建；构建失败则保持原服务运行。确认构建完成后，启动独立辅助程序，等待旧进程退出，再直接启动新 `server.js`。只有新进程的健康接口返回匹配的 PID 才认定重启成功。
 - 重启辅助程序的状态在 `runtime/portal.restart.status.json`，标准输出和报错分别在 `runtime/portal.restart.out.log` 和 `runtime/portal.restart.err.log`。若无法恢复，可使用 `start.ps1` 或 `npm run start` 手动启动。
 - **重要**：首次安装此更新必须在本机手动重启原有平台一次，才能让旧后端加载新 `/api/restart` 逻辑。仅更新前端或刷新浏览器并不会更新已经运行的 Node 服务。
