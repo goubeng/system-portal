@@ -24,13 +24,13 @@
           <span class="chip-dot"></span>
           <b>PostgreSQL 14</b>
           <span class="status-badge" :class="infrastructure.postgres?.running ? 'success' : 'default'">{{ infrastructure.postgres?.running ? '可用' : '不可用' }}</span>
-          <small>本机端口 5432</small>
+          <small>5432</small>
         </div>
         <div class="infra-chip" :class="{ up: infrastructure.nocodb?.running }">
           <span class="chip-dot"></span>
           <b>NocoDB</b>
           <span class="status-badge" :class="infrastructure.nocodb?.running ? 'success' : 'default'">{{ infrastructure.nocodb?.running ? '可用' : '不可用' }}</span>
-          <small>共享数据服务 8080</small>
+          <small>8080</small>
         </div>
       </div>
       <div class="top-bar-right">
