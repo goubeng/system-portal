@@ -58,7 +58,7 @@
             v-model="systemSearch"
             clearable
             aria-label="搜索系统"
-            placeholder="搜索系统名称、编号或关键词，回车快速定位"
+            placeholder="搜索系统名称、编号、描述或端口"
             @keydown.enter.prevent="locateFirstMatch"
             @keydown.esc="systemSearch = ''"
           >
@@ -78,7 +78,6 @@
             <div v-if="!systemSearchMatches.length" class="system-search-empty">未找到匹配的系统</div>
           </div>
         </div>
-        <span class="system-search-tip">匹配名称、编号、描述、技术栈；点击结果定位卡片</span>
       </div>
       <!-- ====== 卡片网格 ====== -->
       <section class="card-grid">
@@ -285,10 +284,12 @@ const systemSearchMatches = computed(() => {
     project.name,
     project.shortName,
     project.description,
-    project.implementation,
-    project.versionLabel,
-    project.database,
-    ...(project.techStack || [])
+    project.ports?.webPort,
+    project.ports?.apiPort,
+    project.recommended?.webPort,
+    project.recommended?.apiPort,
+    project.webPort,
+    project.apiPort
   ].filter(Boolean).join(' ').toLocaleLowerCase().includes(keyword))
 })
 const infrastructure = reactive({ docker: {}, postgres: {}, nocodb: {} })
@@ -602,10 +603,14 @@ onBeforeUnmount(() => clearInterval(timer))
 
 /* ===== 系统查询与卡片定位 ===== */
 .system-search-toolbar {
-  display: flex; align-items: center; gap: 16px;
+  display: flex; align-items: center; justify-content: center;
   max-width: 1800px; margin: 0 auto; padding: 20px 28px 0;
 }
-.system-search-field { position: relative; width: min(420px, 100%); flex-shrink: 0; }
+.system-search-field { position: relative; width: min(420px, 100%); }
+.system-search-field :deep(.t-input),
+.system-search-field :deep(.t-input__wrap) { border-radius: 999px; }
+.system-search-field :deep(.t-input) { min-height: 36px; padding-inline: 14px; }
+
 .system-search-results {
   position: absolute; z-index: 120; left: 0; right: 0; top: calc(100% + 6px);
   max-height: 320px; overflow-y: auto;
@@ -621,7 +626,6 @@ onBeforeUnmount(() => clearInterval(timer))
 .system-search-name { color: #1f2937; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .system-search-meta { font-size: 12px; color: #64748b; white-space: nowrap; }
 .system-search-empty { padding: 12px; color: #8a95a8; font-size: 12px; }
-.system-search-tip { font-size: 12px; color: #64748b; }
 
 /* ===== 卡片网格 ===== */
 .card-grid {
@@ -824,7 +828,6 @@ onBeforeUnmount(() => clearInterval(timer))
 @media (max-width: 700px) {
   .system-search-toolbar { padding: 12px 12px 0; }
   .system-search-field { width: 100%; }
-  .system-search-tip { display: none; }
   .top-bar-right { flex-wrap: wrap; }
   .card-grid { grid-template-columns: 1fr; padding: 12px; gap: 12px; }
   .top-bar-center { display: none; }
