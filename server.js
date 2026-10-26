@@ -377,7 +377,7 @@ async function apiHandler(req,res,url){
     return send(res,200,{stopped,projects:await Promise.all(projects.map(projectStatus))})
   }
   if(req.method==='POST' && url.pathname==='/api/portal/stop'){
-    send(res,200,{message:'系统调度枢纽服务正在停止'})
+    send(res,200,{message:'综合门户服务正在停止'})
     setTimeout(()=>shutdown(),120).unref()
     return
   }
@@ -414,7 +414,7 @@ const server=http.createServer(async(req,res)=>{
 
 server.listen(portalPort,portalHost,()=>{
   fs.writeFileSync(path.join(runtimeRoot,'portal.pid'),String(process.pid))
-  console.log(`系统调度枢纽: ${portalUrls().networkUrl || portalUrls().url}`)
+  console.log(`System portal: ${portalUrls().networkUrl || portalUrls().url}`)
 })
 
 async function shutdown(){

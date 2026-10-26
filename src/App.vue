@@ -4,7 +4,7 @@
       <div class="top-main">
         <div class="portal-info">
           <div class="title-line">
-            <h1>系统调度枢纽</h1>
+            <h1>综合门户</h1>
           </div>
           <div class="portal-address">
             <a class="portal-url" :href="portalAccessUrl" target="_blank" rel="noopener noreferrer">{{ portalAccessUrl }}</a>
@@ -37,7 +37,7 @@
             <t-button class="tool-button" size="small" theme="default" variant="outline" title="外部服务停止说明" @click="helpDialog.visible=true"><HelpCircleIcon /></t-button>
             <t-button class="tool-button" size="small" theme="default" variant="outline" title="显示顺序" @click="openOrderDialog"><SettingIcon /></t-button>
             <t-button class="tool-button" size="small" theme="default" variant="outline" title="刷新" :loading="refreshing" @click="refreshStatus"><RefreshIcon /></t-button>
-            <t-button class="tool-button stop-portal-button" size="small" theme="danger" variant="outline" title="停止系统调度枢纽服务" :loading="stoppingPortal" @click="stopPortal"><PoweroffIcon /></t-button>
+            <t-button class="tool-button stop-portal-button" size="small" theme="danger" variant="outline" title="停止综合门户服务" :loading="stoppingPortal" @click="stopPortal"><PoweroffIcon /></t-button>
           </div>
         </div>
       </div>
@@ -169,11 +169,11 @@
       </div>
     </t-dialog>
 
-    <t-dialog v-model:visible="stopPortalDialog.visible" header="停止系统调度枢纽服务" placement="center" width="460px" :footer="false">
+    <t-dialog v-model:visible="stopPortalDialog.visible" header="停止综合门户服务" placement="center" width="460px" :footer="false">
       <div class="stop-confirm">
         <div class="stop-confirm-icon"><PoweroffIcon /></div>
         <div>
-          <h4>确认停止系统调度枢纽服务？</h4>
+          <h4>确认停止综合门户服务？</h4>
           <p>停止后当前页面将无法继续访问，需要重新启动门户服务后才能再次打开。</p>
         </div>
       </div>
@@ -305,7 +305,7 @@ async function confirmStopPortal(){
   try{
     await api('/api/portal/stop',{method:'POST',body:'{}'})
     stopPortalDialog.visible=false
-    MessagePlugin.success('系统调度枢纽服务正在停止')
+    MessagePlugin.success('综合门户服务正在停止')
   }catch(error){
     MessagePlugin.error(error.message)
     stoppingPortal.value=false
