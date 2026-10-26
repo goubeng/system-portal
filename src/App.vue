@@ -1,5 +1,27 @@
 <template>
-  <main class="portal-page">
+  <main class="portal-page" :class="{ 'portal-page--closed': portalClosed }">
+    <section v-if="portalClosed" class="portal-closed-screen" role="status" aria-live="polite">
+      <div class="portal-closed-content">
+        <svg class="portal-closed-svg" viewBox="0 0 160 160" fill="none" aria-hidden="true" focusable="false">
+          <circle cx="80" cy="80" r="76" fill="#EFF6FF"/>
+          <circle cx="80" cy="80" r="62" stroke="#DBEAFE" stroke-width="1.5"/>
+          <rect x="34" y="39" width="92" height="73" rx="9" fill="#FFFFFF" stroke="#94A3B8" stroke-width="3"/>
+          <path d="M80 112V124M58 125H102" stroke="#64748B" stroke-width="3" stroke-linecap="round"/>
+          <path d="M80 55V77" stroke="#2563EB" stroke-width="4.5" stroke-linecap="round"/>
+          <path d="M64 65A23 23 0 1 0 96 65" stroke="#2563EB" stroke-width="4.5" stroke-linecap="round"/>
+          <circle cx="116" cy="110" r="13" fill="#10B981" stroke="#FFFFFF" stroke-width="3"/>
+          <path d="M110 110L114 114L122 106" stroke="#FFFFFF" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <h1 id="portal-closed-title" class="portal-closed-title" tabindex="-1">平台已关闭</h1>
+        <p class="portal-closed-description">系统集指挥调度枢纽已执行关闭操作，当前页面不再提供系统管理功能。</p>
+        <div class="portal-closed-divider"></div>
+        <p class="portal-closed-guide">如需继续使用，请在本机重新启动平台后，再打开管理页面。</p>
+        <p class="portal-closed-command">start.ps1 <span>或</span> npm run start</p>
+        <p class="portal-closed-address">访问地址：127.0.0.1:8484</p>
+        <p class="portal-closed-note">现在可以安全关闭此浏览器标签页。</p>
+      </div>
+    </section>
+    <template v-else>
     <!-- ====== 顶部导航栏 ====== -->
     <header class="top-bar">
       <div class="top-bar-left">
@@ -45,8 +67,8 @@
         <button class="tb-action-btn tb-stop" @click="stopAll">
           <stop-icon /> 全部停止
         </button>
-        <button class="tb-action-btn tb-exit" @click="exitPortal">
-          <poweroff-icon /> 关闭平台
+        <button class="tb-action-btn tb-exit" :disabled="exitingPortal" :aria-busy="exitingPortal" @click="exitPortal">
+          <poweroff-icon /> {{ exitingPortal ? '正在关闭…' : '关闭平台' }}
         </button>
       </div>
     </header>
@@ -253,6 +275,7 @@ docker ps --format '{{dockerContainersFormat}}'</pre>
         <p>修复后点击卡片“启动服务”，待状态变为“运行中”或“外部运行”再打开系统。修改门户注册配置或后端后需重启门户才生效；停止门户可能同时停止它管理的业务项目，请先确认当前任务。</p>
       </div>
     </t-dialog>
+    </template>
   </main>
 </template>
 
@@ -263,6 +286,8 @@ import { MessagePlugin } from 'tdesign-vue-next'
 import { RefreshIcon, PlayIcon, StopIcon, HelpCircleIcon, PoweroffIcon, SearchIcon } from 'tdesign-icons-vue-next'
 
 const projects = ref([])
+const portalClosed = ref(false)
+const exitingPortal = ref(false)
 const systemSearch = ref('')
 const locatedCardKey = ref('')
 const systemSearchMatches = computed(() => {
@@ -438,10 +463,15 @@ async function detectLanIPs() {
 
 /* ---- 刷新 ---- */
 async function refreshStatus(silent = false) {
-  if (refreshing.value) return
+  if (refreshing.value || exitingPortal.value || portalClosed.value) return
   refreshing.value = true
-  try { const d = await api('/api/status'); projects.value = d.projects; assignInfra(d.infrastructure) }
-  catch (e) { if (!silent) MessagePlugin.error(e.message) }
+  try {
+    const d = await api('/api/status')
+    if (!portalClosed.value && !exitingPortal.value) {
+      projects.value = d.projects
+      assignInfra(d.infrastructure)
+    }
+  } catch (e) { if (!silent && !portalClosed.value) MessagePlugin.error(e.message) }
   finally { refreshing.value = false }
 }
 
@@ -460,10 +490,20 @@ async function projectAction(item, action) {
 async function stopAll() { for (const i of projects.value) if (i.managed) await projectAction(i, 'stop') }
 
 async function exitPortal() {
+  if (exitingPortal.value || portalClosed.value) return
+  exitingPortal.value = true
   try {
     await api('/api/exit', { method: 'POST', body: '{}' })
-    MessagePlugin.success('系统集指挥调度枢纽服务已退出，您可以安全关闭此页面。')
-  } catch (e) { MessagePlugin.error(e.message) }
+    clearInterval(timer)
+    timer = undefined
+    portalClosed.value = true
+    await nextTick()
+    document.getElementById('portal-closed-title')?.focus()
+  } catch (e) {
+    MessagePlugin.error(`关闭平台失败：${e.message}`)
+  } finally {
+    exitingPortal.value = false
+  }
 }
 
 function openProject(item) { if (item.url) window.open(item.url, '_blank', 'noopener,noreferrer') }
@@ -490,7 +530,7 @@ function statusMeta(s) {
 onMounted(async () => {
   try { await bootstrap() } catch (e) { MessagePlugin.error(e.message) }
   await detectLanIPs()
-  timer = setInterval(() => refreshStatus(true), 4000)
+  if (!portalClosed.value) timer = setInterval(() => refreshStatus(true), 4000)
 })
 onBeforeUnmount(() => clearInterval(timer))
 </script>
@@ -507,6 +547,32 @@ onBeforeUnmount(() => clearInterval(timer))
   -webkit-font-smoothing: antialiased;
 }
 .portal-page { min-height: 100vh; display: flex; flex-direction: column; }
+
+/* ===== 平台关闭后的全屏提示 ===== */
+.portal-page--closed { background: #f8fafc; }
+.portal-closed-screen {
+  flex: 1; min-height: 100vh; display: flex;
+  justify-content: center; align-items: center; padding: 48px 20px;
+}
+.portal-closed-content {
+  display: flex; flex-direction: column; align-items: center;
+  max-width: 540px; width: 100%; text-align: center;
+}
+.portal-closed-svg { width: 160px; height: 160px; margin-bottom: 20px; }
+.portal-closed-title { font-size: 28px; font-weight: 600; color: #1f2937; line-height: 1.4; }
+.portal-closed-description { margin-top: 12px; color: #64748b; font-size: 14px; line-height: 1.8; }
+.portal-closed-divider { margin: 28px 0 20px; height: 1px; width: 100%; background: #e2e8f0; }
+.portal-closed-guide { color: #475569; font-size: 13px; line-height: 1.8; }
+.portal-closed-command {
+  margin-top: 12px; color: #334155; background: #eef2f7;
+  border: 1px solid #e2e8f0; border-radius: 4px;
+  padding: 9px 18px; font-size: 13px;
+  font-family: Consolas, "Cascadia Code", monospace;
+}
+.portal-closed-command span { color: #94a3b8; padding: 0 10px; font-family: inherit; }
+.portal-closed-address { margin-top: 12px; color: #64748b; font-size: 12px; }
+.portal-closed-note { margin-top: 32px; color: #94a3b8; font-size: 12px; }
+.portal-closed-title:focus { outline: none; }
 
 /* ===== 顶栏 (暗色现代风) ===== */
 .top-bar {

@@ -22,6 +22,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\start-portal.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\stop-portal.ps1
 ```
 
+## 关闭后的页面
+
+点击顶部“关闭平台”且接口确认成功后，系统管理卡片与操作区会替换为全屏关闭状态页，展示独立 SVG 图标、关闭状态及本机重新启动指引。页面不再轮询后台状态，不提供已失效的系统操作。关闭失败时仍保留原页面并显示错误信息。
+
+关闭状态页仅供当前已打开的浏览器标签展示；服务停止后刷新页面不能再从已关闭的后端加载页面。需要重新使用时，在本机运行 `start.ps1` 或 `npm run start`，然后访问 `http://127.0.0.1:8484/`。平台仍仅监听 `127.0.0.1`。
+
 ## 端口编号
 
 - 门户：`8484`
