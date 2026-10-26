@@ -1,6 +1,15 @@
 <template>
   <main class="portal-page" :class="{ 'portal-page--closed': portalClosed }">
-    <section v-if="portalClosed" class="portal-closed-screen" role="status" aria-live="polite">
+    <section v-if="restartingPortal" class="portal-closed-screen" role="status" aria-live="polite">
+      <div class="portal-closed-content">
+        <div class="portal-restarting-icon"><refresh-icon /></div>
+        <h1 class="portal-closed-title">正在重启平台</h1>
+        <p class="portal-closed-description">系统集指挥调度枢纽正在重新启动，服务恢复后页面将自动刷新。</p>
+        <p v-if="restartNotice" class="portal-restart-warning">{{ restartNotice }}</p>
+        <p class="portal-closed-guide">如未恢复，请在本机运行 <code>start.ps1</code> 或 <code>npm run start</code>，然后刷新页面。</p>
+      </div>
+    </section>
+    <section v-else-if="portalClosed" class="portal-closed-screen" role="status" aria-live="polite">
       <div class="portal-closed-content">
         <svg class="portal-closed-svg" viewBox="0 0 160 160" fill="none" aria-hidden="true" focusable="false">
           <circle cx="80" cy="80" r="76" fill="#EFF6FF"/>
@@ -64,10 +73,10 @@
         <button class="tb-action-btn tb-help" @click="helpDialogVisible = true">
           <help-circle-icon /> 帮助
         </button>
-        <button class="tb-action-btn tb-stop" @click="stopAll">
-          <stop-icon /> 全部停止
+        <button class="tb-action-btn tb-restart" :disabled="restartingPortal || exitingPortal || stoppingAll" @click="restartConfirmVisible = true">
+          <refresh-icon /> 重启平台
         </button>
-        <button class="tb-action-btn tb-exit" :disabled="exitingPortal" :aria-busy="exitingPortal" @click="exitPortal">
+        <button class="tb-action-btn tb-exit" :disabled="exitingPortal || restartingPortal || stoppingAll" :aria-busy="exitingPortal" @click="exitPortal">
           <poweroff-icon /> {{ exitingPortal ? '正在关闭…' : '关闭平台' }}
         </button>
       </div>
@@ -87,6 +96,9 @@
             <template #prefix-icon><search-icon /></template>
           </t-input>
         </div>
+        <t-button class="stop-all-button" theme="danger" variant="outline" size="small" :loading="stoppingAll" :disabled="exitingPortal || restartingPortal" @click="stopAll">
+          <stop-icon /> 停止所有系统服务
+        </t-button>
       </div>
       <div v-if="systemSearch.trim() && !displayProjects.length" class="system-search-empty-state">
         未找到匹配的系统，请更换关键词
@@ -219,6 +231,16 @@
       </section>
     </div>
 
+    <t-dialog v-model:visible="restartConfirmVisible" header="重启平台" placement="center" width="460px" :footer="false">
+      <div class="restart-confirm-message">
+        <p>确认重启“系统集指挥调度枢纽”吗？这将重新启动本机 8484 管理服务，服务恢复后页面会自动刷新。</p>
+        <p>不会主动停止业务系统，但原平台启动的服务可能在重启后显示为“外部运行”，无法再由本平台直接停止。</p>
+      </div>
+      <div class="restart-confirm-actions">
+        <t-button size="small" variant="outline" @click="restartConfirmVisible = false">取消</t-button>
+        <t-button size="small" theme="primary" :loading="restartingPortal" @click="restartPortal">确认重启</t-button>
+      </div>
+    </t-dialog>
     <!-- ====== 日志弹窗 ====== -->
     <t-dialog v-model:visible="logDialog.visible" :header="`${logDialog.name} · 运行日志`" width="900px" :footer="false">
       <pre class="log-pre">{{ logDialog.lines.length ? logDialog.lines.join('\n') : '暂无日志。项目可能尚未由本门户启动。' }}</pre>
@@ -288,6 +310,10 @@ import { RefreshIcon, PlayIcon, StopIcon, HelpCircleIcon, PoweroffIcon, SearchIc
 const projects = ref([])
 const portalClosed = ref(false)
 const exitingPortal = ref(false)
+const restartingPortal = ref(false)
+const restartConfirmVisible = ref(false)
+const restartNotice = ref('')
+const stoppingAll = ref(false)
 const systemSearch = ref('')
 const locatedCardKey = ref('')
 const systemSearchMatches = computed(() => {
@@ -328,6 +354,7 @@ const busyAction = ref('')
 const logDialog = reactive({ visible: false, name: '', lines: [] })
 const detailDialog = reactive({ visible: false, item: null })
 let timer
+let restartPollTimer
 
 const activeVersions = reactive({})
 
@@ -463,11 +490,11 @@ async function detectLanIPs() {
 
 /* ---- 刷新 ---- */
 async function refreshStatus(silent = false) {
-  if (refreshing.value || exitingPortal.value || portalClosed.value) return
+  if (refreshing.value || exitingPortal.value || restartingPortal.value || portalClosed.value) return
   refreshing.value = true
   try {
     const d = await api('/api/status')
-    if (!portalClosed.value && !exitingPortal.value) {
+    if (!portalClosed.value && !exitingPortal.value && !restartingPortal.value) {
       projects.value = d.projects
       assignInfra(d.infrastructure)
     }
@@ -487,10 +514,52 @@ async function projectAction(item, action) {
   finally { busyId.value = ''; busyAction.value = '' }
 }
 
-async function stopAll() { for (const i of projects.value) if (i.managed) await projectAction(i, 'stop') }
+async function stopAll() {
+  if (stoppingAll.value || exitingPortal.value || restartingPortal.value) return
+  stoppingAll.value = true
+  try {
+    for (const project of projects.value) {
+      if (project.managed) await projectAction(project, 'stop')
+    }
+  } finally { stoppingAll.value = false }
+}
+
+async function restartPortal() {
+  if (restartingPortal.value || exitingPortal.value || stoppingAll.value) return
+  restartingPortal.value = true
+  restartNotice.value = ''
+  try {
+    const { previousPid } = await api('/api/restart', { method: 'POST', body: '{}' })
+    restartConfirmVisible.value = false
+    clearInterval(timer)
+    timer = undefined
+    const startedAt = Date.now()
+    restartPollTimer = setInterval(async () => {
+      try {
+        const result = await fetch('/healthz', { cache: 'no-store' })
+        if (result.ok) {
+          const health = await result.json()
+          if (health.ok && health.pid !== previousPid) {
+            clearInterval(restartPollTimer)
+            window.location.reload()
+            return
+          }
+        }
+      } catch { /* 等待服务恢复 */ }
+      if (Date.now() - startedAt > 90000) {
+        clearInterval(restartPollTimer)
+        restartNotice.value = '尚未检测到平台恢复，请查看本机重启日志或手动启动。'
+      }
+    }, 1200)
+  } catch (error) {
+    restartingPortal.value = false
+    restartConfirmVisible.value = false
+    MessagePlugin.error(`重启平台失败：${error.message}`)
+  }
+}
 
 async function exitPortal() {
-  if (exitingPortal.value || portalClosed.value) return
+  if (exitingPortal.value || restartingPortal.value || stoppingAll.value || portalClosed.value) return
   exitingPortal.value = true
   try {
     await api('/api/exit', { method: 'POST', body: '{}' })
@@ -532,7 +601,10 @@ onMounted(async () => {
   await detectLanIPs()
   if (!portalClosed.value) timer = setInterval(() => refreshStatus(true), 4000)
 })
-onBeforeUnmount(() => clearInterval(timer))
+onBeforeUnmount(() => {
+  clearInterval(timer)
+  clearInterval(restartPollTimer)
+})
 </script>
 
 <!-- ================================================================ -->
@@ -573,6 +645,10 @@ onBeforeUnmount(() => clearInterval(timer))
 .portal-closed-address { margin-top: 12px; color: #64748b; font-size: 12px; }
 .portal-closed-note { margin-top: 32px; color: #94a3b8; font-size: 12px; }
 .portal-closed-title:focus { outline: none; }
+.portal-restarting-icon { display: flex; align-items: center; justify-content: center; width: 132px; height: 132px; margin-bottom: 24px; border-radius: 50%; background: #eff6ff; color: #2563eb; }
+.portal-restarting-icon svg { width: 64px; height: 64px; animation: portal-restart-spin 2s linear infinite; }
+.portal-restart-warning { margin: 20px 0; color: #b45309; line-height: 1.7; }
+@keyframes portal-restart-spin { to { transform: rotate(360deg); } }
 
 /* ===== 顶栏 (暗色现代风) ===== */
 .top-bar {
@@ -658,9 +734,9 @@ onBeforeUnmount(() => clearInterval(timer))
 .tb-start:hover { background: #3b82f6; color: #fff; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(59,130,246,0.2); }
 .tb-start:active { transform: translateY(0); }
 
-.tb-stop { background: rgba(239,68,68,0.15); color: #f87171; border-color: rgba(239,68,68,0.3); }
-.tb-stop:hover { background: #ef4444; color: #fff; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(239,68,68,0.2); }
-.tb-stop:active { transform: translateY(0); }
+.tb-restart { background: rgba(59,130,246,0.15); color: #93c5fd; border-color: rgba(59,130,246,0.3); }
+.tb-restart:hover:not(:disabled) { background: #2563eb; color: #fff; }
+.tb-restart:disabled, .tb-exit:disabled { opacity: .55; cursor: not-allowed; }
 
 .tb-exit { background: rgba(245,158,11,0.15); color: #fbbf24; border-color: rgba(245,158,11,0.3); }
 .tb-exit:hover { background: #f59e0b; color: #fff; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(245,158,11,0.2); }
@@ -668,10 +744,14 @@ onBeforeUnmount(() => clearInterval(timer))
 
 /* ===== 系统查询与卡片定位 ===== */
 .system-search-toolbar {
-  display: flex; align-items: center; justify-content: center;
+  display: flex; align-items: center; justify-content: center; position: relative;
   max-width: 1800px; margin: 0 auto; padding: 20px 28px 0;
 }
 .system-search-field { position: relative; width: min(420px, 100%); }
+.stop-all-button { position: absolute; right: 28px; top: 20px; height: 36px; white-space: nowrap; }
+.restart-confirm-message { color: #475569; font-size: 13px; line-height: 1.8; }
+.restart-confirm-message p + p { margin-top: 12px; color: #92400e; }
+.restart-confirm-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px; }
 .system-search-field :deep(.t-input),
 .system-search-field :deep(.t-input__wrap) { border-radius: 999px; }
 .system-search-field :deep(.t-input) { min-height: 36px; padding-inline: 14px; }
@@ -872,13 +952,16 @@ onBeforeUnmount(() => clearInterval(timer))
 @media (max-width: 1500px) { .card-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 1100px) {
   .system-search-toolbar { padding: 16px 16px 0; }
+  .stop-all-button { right: 16px; top: 16px; }
+  .system-search-field { width: min(420px, calc(100% - 340px)); }
   .card-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; padding: 16px; }
   .top-bar { flex-wrap: wrap; height: auto; padding: 12px 16px; gap: 12px; }
   .top-bar-center { order: 3; width: 100%; justify-content: flex-start; flex-wrap: wrap; }
 }
 @media (max-width: 700px) {
-  .system-search-toolbar { padding: 12px 12px 0; }
+  .system-search-toolbar { padding: 12px 12px 0; flex-direction: column; gap: 12px; }
   .system-search-field { width: 100%; }
+  .stop-all-button { position: static; align-self: flex-end; }
   .top-bar-right { flex-wrap: wrap; }
   .card-grid { grid-template-columns: 1fr; padding: 12px; gap: 12px; }
   .top-bar-center { display: none; }
