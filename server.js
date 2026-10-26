@@ -298,20 +298,28 @@ async function apiHandler(req,res,url){
   if(req.method==='POST' && url.pathname==='/api/infrastructure/docker/start')return send(res,200,{infrastructure:await startDocker()})
   if(req.method==='POST' && url.pathname==='/api/restart') {
     if(restartPending)return send(res,409,{message:'平台正在重启，请勿重复操作'})
-    const helper=path.join(root,'lib','restart-portal.js')
-    if(!fs.existsSync(helper))return send(res,500,{message:'缺少平台重启脚本，请检查项目文件'})
+    restartPending=true
     try {
+      const helper=path.join(root,'lib','restart-portal.js')
+      const viteCli=path.join(root,'node_modules','vite','bin','vite.js')
+      if(!fs.existsSync(helper))throw new Error('重启程序缺失，请重新拉取 main 分支代码')
+      if(!fs.existsSync(viteCli))throw new Error('缺少 Vite 依赖，请先在项目目录执行 npm ci')
+      // Build before stopping the old server. A failed build must not shut it down.
+      const build=await execFileResult(process.execPath,[viteCli,'build'],{
+        cwd:root,timeout:120000,maxBuffer:4*1024*1024
+      })
+      if(!build.ok)throw new Error('前端构建失败：'+sanitizeLine(build.stderr||build.stdout||build.error?.message||'未知错误').slice(-600))
       await new Promise((resolve,reject)=>{
         const child=spawn(process.execPath,[helper],{cwd:root,detached:true,windowsHide:true,stdio:'ignore'})
         child.once('error',reject)
         child.once('spawn',()=>{child.unref();resolve()})
       })
-    } catch(error) {
-      return send(res,500,{message:`启动重启程序失败：${error.message}`})
+      send(res,202,{message:'系统集指挥调度枢纽正在重启',previousPid:process.pid})
+      setTimeout(()=>process.exit(0),1000)
+    }catch(error){
+      restartPending=false
+      return send(res,500,{message:'重启准备失败：'+sanitizeLine(error.message)})
     }
-    restartPending=true
-    send(res,202,{message:'系统集指挥调度枢纽正在重启',previousPid:process.pid})
-    setTimeout(()=>process.exit(0),800)
     return
   }
   if(req.method==='POST' && url.pathname==='/api/exit') {

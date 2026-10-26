@@ -547,13 +547,16 @@ async function restartPortal() {
       } catch { /* 等待服务恢复 */ }
       if (Date.now() - startedAt > 90000) {
         clearInterval(restartPollTimer)
-        restartNotice.value = '尚未检测到平台恢复，请查看本机重启日志或手动启动。'
+        restartNotice.value = '未检测到平台恢复，请查看 runtime/portal.restart.status.json 与 portal.restart.err.log，或手动启动。'
       }
     }, 1200)
   } catch (error) {
     restartingPortal.value = false
     restartConfirmVisible.value = false
-    MessagePlugin.error(`重启平台失败：${error.message}`)
+    const oldServer = /接口不存在|HTTP 404|Not Found/.test(error.message)
+    MessagePlugin.error(oldServer
+      ? '当前后端没有重启接口。请先在本机手动重启一次管理平台，使新的服务端代码生效。'
+      : `重启平台失败：${error.message}`)
   }
 }
 
