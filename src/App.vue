@@ -260,39 +260,85 @@
       </div>
     </t-dialog>
 
-    <!-- ====== 帮助弹窗 ====== -->
-    <t-dialog v-model:visible="helpDialogVisible" header="系统启动与故障排查" width="min(760px, 94vw)" :footer="false">
+    <!-- ====== 帮助弹窗：如何停止服务进程（含外部运行关闭指南） ====== -->
+    <t-dialog v-model:visible="helpDialogVisible" header="如何停止服务进程（含外部运行关闭指南）" width="min(820px, 94vw)" :footer="false">
       <div class="help-content">
-        <h4>1. 确认访问地址与项目</h4>
-        <p>系统集指挥调度枢纽地址：<a :href="portalAddress" target="_blank" rel="noopener">{{ portalAddress }}</a>。业务系统请使用启动成功后卡片中的地址；API 端口不是网页入口。</p>
-        <t-select v-model="helpProjectId" aria-label="排查项目" :options="projects.map(p => ({ label: p.name, value: p.id }))" />
-        <dl v-if="helpProject" class="dl">
-          <div><dt>项目目录</dt><dd>{{ helpProject.directory || helpProject.folder }}</dd></div>
-          <div><dt>当前状态</dt><dd>{{ statusMeta(helpProject.status).label }}</dd></div>
-          <div><dt>Web / API</dt><dd>{{ helpProject.ports?.webPort || helpProject.recommended?.webPort }} / {{ helpProject.ports?.apiPort || helpProject.recommended?.apiPort || '无独立 API' }}</dd></div>
-          <div v-if="helpProject.url"><dt>访问地址</dt><dd><a :href="helpProject.url" target="_blank" rel="noopener">{{ helpProject.url }}</a></dd></div>
-        </dl>
-        <p v-if="helpProject?.fixedPorts">此项目固定使用上述 Web/API 端口，不支持自动换端口。</p>
-        <h4>2. 先看启动错误和运行日志</h4>
-        <p>点击卡片“运行日志”，检查最后一次启动后的错误。没有进程监听只表示该端口当前空闲，也可能是进程已退出、依赖失败或端口被 Windows 保留；不能据此认定系统正常。</p>
-        <p>日志文件位于系统集指挥调度枢纽目录的 <code>runtime/logs/{{ helpProjectId }}.log</code>。历史日志可能对应旧项目名称，以本次启动时间为准。</p>
-        <p>若系统集指挥调度枢纽自身打不开：在门户目录执行 <code>npm run start</code> 查看构建和启动错误，或检查 <code>runtime/portal.out.log</code> 与 <code>runtime/portal.err.log</code>。门户端口无监听时，先排查依赖与构建是否成功。</p>
-        <h4>3. 精确查询 Web 与 API 端口（PowerShell）</h4>
-        <pre class="code-block">{{ helpPortCommand }}</pre>
-        <p>只检查 Listen 状态的精确端口，查看 OwningProcess。若有结果，再核对进程路径和命令行（把 12345 换成查到的 PID）：</p>
-        <pre class="code-block">Get-CimInstance Win32_Process -Filter "ProcessId = 12345" | Select-Object ProcessId, ExecutablePath, CommandLine</pre>
-        <p>确认属于哪个系统后，优先在所属门户或原启动终端正常停止。不要直接结束未知 PID、Docker、数据库或系统集指挥调度枢纽进程。</p>
-        <p>无监听却出现 EACCES / EPERM / 无法绑定时，检查 Windows 保留端口范围；不要擅自删除保留范围：</p>
-        <pre class="code-block">netsh interface ipv4 show excludedportrange protocol=tcp</pre>
-        <h4>4. 根据错误处理依赖</h4>
-        <p>忘记打开 Docker 时，顶部会显示“未启动，请先打开”，请手动打开 Docker Desktop。门户仅检测当前启动状态；显示“已启动”表示 Docker Desktop 已打开，无需重复启动；显示“启动状态待确认”时，请确认软件是否已打开。</p>
-        <p>依赖缺失：进入“项目目录”，有 package-lock.json 时执行 <code>npm ci</code>，否则执行 <code>npm install</code>。然后用 <code>npm run dev</code> 在终端观察完整错误；独立启动成功后，门户会识别外部服务。</p>
-        <p>数据库失败或 Docker 检测超时：Docker Desktop 窗口打开不代表引擎正常。在 PowerShell 执行下列只读查询；长时间无响应可按 Ctrl+C 取消。</p>
-        <pre class="code-block">docker info --format '{{dockerVersionFormat}}'
-docker ps --format '{{dockerContainersFormat}}'</pre>
-        <p v-if="helpProject?.requiresDocker">此项目通过 <code>docker exec postgres14</code> 访问 <code>nocodb_data</code>。先确认引擎有响应、postgres14 容器运行，再排查数据库错误。5432 可连接不能替代这条执行链；不要改为 Mock 掩盖故障。</p>
-        <h4>5. 重试与确认</h4>
-        <p>修复后点击卡片“启动服务”，待状态变为“运行中”或“外部运行”再打开系统。修改门户注册配置或后端后需重启门户才生效；停止门户可能同时停止它管理的业务项目，请先确认当前任务。</p>
+        <!-- 模块一：受管服务停止方式 -->
+        <div class="help-section">
+          <h4>一、当前门户启动的服务（受管服务）</h4>
+          <p>由本调度平台拉起的业务系统，直接在界面即可一键停止：</p>
+          <ul class="help-list">
+            <li><b>停止单个系统</b>：点击该系统卡片右下角的红色 <code>停止服务</code> 按钮；</li>
+            <li><b>停止全部系统</b>：点击搜索框右侧的胶囊按钮 <code>停止所有系统服务</code>；</li>
+            <li><b>关闭调度平台</b>：点击页面右上角操作栏的 <code>关闭平台</code> 按钮。</li>
+          </ul>
+        </div>
+
+        <!-- 模块二：重点：外部运行服务停止 -->
+        <div class="help-section">
+          <h4>二、重点：显示为「外部运行」的进程如何停止？</h4>
+          <div class="help-tip-box warn">
+            <span class="tip-title">⚠️ 为什么卡片显示「外部运行，无法强制停止」？</span>
+            <p>当服务是在 <b>外部终端（VS Code 终端、CMD、PowerShell）独立执行 npm run dev 启动</b>，或者<b>调度平台重启后与原进程脱钩</b>时，该进程属于操作系统独立进程。出于安全性，平台不能直接跨进程强制结束它。</p>
+          </div>
+
+          <h5 class="sub-title">停止外部运行进程的 3 种方式：</h5>
+          
+          <div class="help-step">
+            <div class="step-num">方法 1</div>
+            <div class="step-desc">
+              <b>回到原启动终端按快捷键停止（首选）：</b>
+              <p>切回当初运行该系统的 VS Code 终端标签页或命令行窗口，按下快捷键 <kbd>Ctrl</kbd> + <kbd>C</kbd>，然后输入 <code>y</code> 确认即可安全退出。</p>
+            </div>
+          </div>
+
+          <div class="help-step">
+            <div class="step-num">方法 2</div>
+            <div class="step-desc">
+              <b>通过 PowerShell 精准按端口终止进程（推荐，最快）：</b>
+              <p>请在下方选择目标系统，系统将自动生成对应的专有终止命令：</p>
+              <div class="select-row">
+                <t-select v-model="helpProjectId" aria-label="排查项目" :options="projects.map(p => ({ label: p.name + ' (Web:' + (p.ports?.webPort || p.webPort) + (p.ports?.apiPort || p.apiPort ? ' / API:' + (p.ports?.apiPort || p.apiPort) : '') + ')', value: p.id }))" />
+              </div>
+              <div class="cmd-box">
+                <div class="cmd-header">
+                  <span>⚡ 终止占用该系统端口的进程命令：</span>
+                  <button class="cmd-copy-action" @click="copyText(killPortCommand)">复制终止命令</button>
+                </div>
+                <pre class="code-block">{{ killPortCommand }}</pre>
+              </div>
+              <div class="cmd-box">
+                <div class="cmd-header">
+                  <span>🔍 查看占用端口的详细 PID：</span>
+                  <button class="cmd-copy-action" @click="copyText(queryPortCommand)">复制代码</button>
+                </div>
+                <pre class="code-block">{{ queryPortCommand }}</pre>
+              </div>
+            </div>
+          </div>
+
+          <div class="help-step">
+            <div class="step-num">方法 3</div>
+            <div class="step-desc">
+              <b>在 Windows 任务管理器中结束任务：</b>
+              <p>按快捷键 <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>Esc</kbd> 呼出任务管理器，切换至「详细信息」选项卡，找到对应的 <code>node.exe</code> 进程，右键选择「结束任务」。</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- 模块三：全局清理兜底 -->
+        <div class="help-section">
+          <h4>三、终极兜底：一键清理所有残留的本地 Node 僵尸进程</h4>
+          <p>若遇到多个端口被未知历史终端占用、冲突且无法定位时，可在 PowerShell 执行以下全局清理指令：</p>
+          <div class="cmd-box">
+            <div class="cmd-header">
+              <span>⚠️ 一键结束所有本地 node.exe 进程（含本平台自身）：</span>
+              <button class="cmd-copy-action" @click="copyText(killAllNodeCommand)">复制清理指令</button>
+            </div>
+            <pre class="code-block">{{ killAllNodeCommand }}</pre>
+          </div>
+          <p class="help-note">💡 执行完毕后，进入平台目录重新运行 <code>.\start.ps1</code> 或 <code>npm run start</code> 即可拥有完全清爽的运行环境！</p>
+        </div>
       </div>
     </t-dialog>
     </template>
@@ -340,13 +386,23 @@ const portalAddress = ref('http://127.0.0.1:8484/')
 const dockerVersionFormat = '{{.ServerVersion}}'
 const dockerContainersFormat = '{{.Names}}: {{.Status}}'
 const helpProject = computed(() => projects.value.find(p => p.id === helpProjectId.value))
-const helpPortCommand = computed(() => {
+const killPortCommand = computed(() => {
   const p = helpProject.value
   const ports = p?.ports || p?.recommended
-  if (!ports) return '请先选择需要排查的项目。'
+  if (!ports) return '# 请在上方选择系统'
   const values = [ports.webPort, ports.apiPort].filter(Boolean).join(', ')
-  return `Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue |\n  Where-Object { $_.LocalPort -in @(${values}) } |\n  Select-Object LocalAddress, LocalPort, OwningProcess`
+  return `Get-NetTCPConnection -State Listen -LocalPort @(${values}) -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }`
 })
+
+const queryPortCommand = computed(() => {
+  const p = helpProject.value
+  const ports = p?.ports || p?.recommended
+  if (!ports) return '# 请在上方选择系统'
+  const values = [ports.webPort, ports.apiPort].filter(Boolean).join(', ')
+  return `Get-NetTCPConnection -State Listen -LocalPort @(${values}) -ErrorAction SilentlyContinue | Select-Object LocalAddress, LocalPort, OwningProcess`
+})
+
+const killAllNodeCommand = 'Get-Process node -ErrorAction SilentlyContinue | Stop-Process -Force'
 const token = ref('')
 const refreshing = ref(false)
 const busyId = ref('')
