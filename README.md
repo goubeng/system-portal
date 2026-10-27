@@ -20,6 +20,27 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\stop-portal.ps1
 
 门户的系统卡片直接读取「AI-PM 协同控制台」数据库里的 `pm_projects` 表（不再手工维护 `config/projects.json`；数据库读取失败时沿用上一次的卡片，并在页面上提示原因）。
 
+### 读取的字段（与协同控制台 `DATABASE-SCHEMA-AND-DATA.md` 中 `pm_projects` 一致）
+
+门户和协同控制台读写同一张表，没有另建表或另存一份卡片数据：
+
+| 表字段 | 门户用途 |
+| :--- | :--- |
+| `id` / `code` / `name` / `short_name` / `description` | 卡片标识、名称、简介 |
+| `kind` | 只显示 `npm`、`static`；`node`、`docker` 等基础设施记录不显示 |
+| `directory_path` | 项目目录（必须在门户允许的工作区内） |
+| `web_port` / `api_port` / `fixed_ports` | 启动、探活与访问端口 |
+| `entry` / `mobile_entry` / `health_path` | 入口页与健康检查路径 |
+| `tech_stack` / `architecture` / `implementation` / `dependencies` | 卡片详情 |
+| `group_id` / `version_label` | 新旧版本分组与切换（标签含“新”/“旧”） |
+| `build_config.portal` | 门户专用设置：`enabled`（是否显示）、`lan`（局域网访问）、`autoInstall`、`healthType`、`healthMarker`。协同控制台重新生成项目时会保留这一段 |
+
+门户自己需要的额外数据都放进 `build_config.portal`（同一张表、同一字段），不改表结构，因此不会影响协同控制台。
+显示顺序是门户页面上的个人偏好，仍保存在本地 `config/project-order.json`。
+某条记录没有显示出来时，页面顶部的数据来源提示会说明原因（例如“缺少 Web 端口”）。
+
+配置步骤：
+
 1. 复制 `config/data-source.example.json` 为 `config/data-source.json`（已加入 .gitignore，不会提交），填写 NocoDB 地址、API Token（与协同控制台「项目构建配置」里的全局 Session 相同）和 `pm_projects` 的表编号。
 2. 在协同控制台某项目的「自动化构建」页点击「登记到调度枢纽」，刷新门户页面即可看到该项目卡片，并可启动 / 停止；关闭「开通局域网访问」则只监听本机。
 3. 显示规则：`build_config.portal.enabled` 为 true 的项目显示；没有任何构建配置的历史项目，只要有本地路径、类型 npm/static 和 Web 端口也显示；`portal.enabled` 为 false 隐藏。项目目录必须位于门户允许的工作区内，否则跳过并给出提示。
