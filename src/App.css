@@ -397,3 +397,12 @@
 .code-block { background: #0f172a; color: #38bdf8; padding: 10px 12px; border-radius: 6px; font-family: Consolas, Monaco, monospace; font-size: 12px; user-select: all; white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; line-height: 1.5; }
 .help-note { font-size: 12px; color: #64748b; margin-top: 6px; }
 kbd { background: #e2e8f0; border: 1px solid #cbd5e1; border-radius: 3px; padding: 1px 5px; font-size: 11px; font-family: inherit; }
+
+/* TD 图标在提示框与命令栏中的精准对齐 */
+.tip-icon-warn { color: #d97706; margin-right: 4px; font-size: 14px; vertical-align: -1px; }
+.cmd-icon-danger { color: #dc2626; margin-right: 4px; font-size: 14px; vertical-align: -2px; }
+.cmd-icon-info { color: #4f46e5; margin-right: 4px; font-size: 14px; vertical-align: -2px; }
+.note-icon-tip { color: #eab308; margin-right: 4px; font-size: 14px; vertical-align: -2px; }
+.cmd-header span { display: inline-flex; align-items: center; }
+.help-tip-box .tip-title { display: inline-flex; align-items: center; }
+.help-note { display: inline-flex; align-items: center; flex-wrap: wrap; }

@@ -278,7 +278,7 @@
         <div class="help-section">
           <h4>二、重点：显示为「外部运行」的进程如何停止？</h4>
           <div class="help-tip-box warn">
-            <span class="tip-title">⚠️ 为什么卡片显示「外部运行，无法强制停止」？</span>
+            <span class="tip-title"><info-circle-filled-icon class="tip-icon-warn" />为什么卡片显示「外部运行，无法强制停止」？</span>
             <p>当服务是在 <b>外部终端（VS Code 终端、CMD、PowerShell）独立执行 npm run dev 启动</b>，或者<b>调度平台重启后与原进程脱钩</b>时，该进程属于操作系统独立进程。出于安全性，平台不能直接跨进程强制结束它。</p>
           </div>
 
@@ -302,14 +302,14 @@
               </div>
               <div class="cmd-box">
                 <div class="cmd-header">
-                  <span>⚡ 终止占用该系统端口的进程命令：</span>
+                  <span><stop-circle-icon class="cmd-icon-danger" />终止占用该系统端口的进程命令：</span>
                   <button class="cmd-copy-action" @click="copyText(killPortCommand)">复制终止命令</button>
                 </div>
                 <pre class="code-block">{{ killPortCommand }}</pre>
               </div>
               <div class="cmd-box">
                 <div class="cmd-header">
-                  <span>🔍 查看占用端口的详细 PID：</span>
+                  <span><search-icon class="cmd-icon-info" />查看占用端口的详细 PID：</span>
                   <button class="cmd-copy-action" @click="copyText(queryPortCommand)">复制代码</button>
                 </div>
                 <pre class="code-block">{{ queryPortCommand }}</pre>
@@ -332,12 +332,12 @@
           <p>若遇到多个端口被未知历史终端占用、冲突且无法定位时，可在 PowerShell 执行以下全局清理指令：</p>
           <div class="cmd-box">
             <div class="cmd-header">
-              <span>⚠️ 一键结束所有本地 node.exe 进程（含本平台自身）：</span>
+              <span><error-circle-icon class="cmd-icon-danger" />一键结束所有本地 node.exe 进程（含本平台自身）：</span>
               <button class="cmd-copy-action" @click="copyText(killAllNodeCommand)">复制清理指令</button>
             </div>
             <pre class="code-block">{{ killAllNodeCommand }}</pre>
           </div>
-          <p class="help-note">💡 执行完毕后，进入平台目录重新运行 <code>.\start.ps1</code> 或 <code>npm run start</code> 即可拥有完全清爽的运行环境！</p>
+          <p class="help-note"><lightbulb-icon class="note-icon-tip" />执行完毕后，进入平台目录重新运行 <code>.\start.ps1</code> 或 <code>npm run start</code> 即可拥有完全清爽的运行环境！</p>
         </div>
       </div>
     </t-dialog>
@@ -351,7 +351,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } 
 import { MessagePlugin } from 'tdesign-vue-next'
 import outIcon from './out.svg'
 import restartIcon from './restart.svg'
-import { RefreshIcon, PlayIcon, StopCircleIcon, HelpCircleIcon, PoweroffIcon, SearchIcon } from 'tdesign-icons-vue-next'
+import { RefreshIcon, PlayIcon, StopCircleIcon, HelpCircleIcon, PoweroffIcon, SearchIcon, InfoCircleFilledIcon, ErrorCircleIcon, LightbulbIcon } from 'tdesign-icons-vue-next'
 
 const projects = ref([])
 const portalClosed = ref(false)
