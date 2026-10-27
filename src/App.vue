@@ -1,602 +1,614 @@
 <template>
-  <main class="portal-page">
-    <header class="top-panel">
-      <div class="top-main">
-        <div class="portal-info">
-          <div class="title-line">
-            <h1>综合门户</h1>
-          </div>
-          <div class="portal-address">
-            <a class="portal-url" :href="portalAccessUrl" target="_blank" rel="noopener noreferrer">{{ portalAccessUrl }}</a>
-            <t-button class="portal-copy" size="small" theme="default" variant="text" title="复制门户访问地址" @click="copyUrl(portalAccessUrl)"><CopyIcon /></t-button>
-          </div>
-        </div>
-        <div class="top-tools">
-          <div class="infra-items">
-            <div class="summary-row infra-summary">
-              <div class="summary-pill is-running"><span>运行中</span><strong>{{ healthyCount }}</strong></div>
-              <div class="summary-pill is-registered"><span>已登记</span><strong>{{ projects.length }}</strong></div>
-            </div>
-            <div class="infra-item">
-              <span :class="['status-dot', infrastructure.docker?.running ? 'is-up' : '']"></span>
-              <div><strong>Docker Desktop</strong><small>基础容器环境</small></div>
-              <t-tag class="infra-tag" :class="infrastructure.docker?.running ? 'is-ready' : 'is-muted'" variant="light">{{ infrastructure.docker?.running ? '运行中' : '未运行' }}</t-tag>
-            </div>
-            <div class="infra-item">
-              <span :class="['status-dot', infrastructure.postgres?.running ? 'is-up' : '']"></span>
-              <div><strong>PostgreSQL 14</strong><small>本机端口 5432</small></div>
-              <t-tag class="infra-tag" :class="infrastructure.postgres?.running ? 'is-ready' : 'is-muted'" variant="light">{{ infrastructure.postgres?.running ? '可用' : '未监听' }}</t-tag>
-            </div>
-            <div class="infra-item">
-              <span :class="['status-dot', infrastructure.nocodb?.running ? 'is-up' : '']"></span>
-              <div><strong>NocoDB</strong><small>共享数据服务 8080</small></div>
-              <t-tag class="infra-tag" :class="infrastructure.nocodb?.running ? 'is-ready' : 'is-muted'" variant="light">{{ infrastructure.nocodb?.running ? '可用' : '未监听' }}</t-tag>
-            </div>
-          </div>
-          <div class="hero-actions">
-            <t-button class="tool-button" size="small" theme="default" variant="outline" title="外部服务停止说明" @click="helpDialog.visible=true"><HelpCircleIcon /></t-button>
-            <t-button class="tool-button" size="small" theme="default" variant="outline" title="显示顺序" @click="openOrderDialog"><SettingIcon /></t-button>
-            <t-button class="tool-button" size="small" theme="default" variant="outline" title="刷新" :loading="refreshing" @click="refreshStatus"><RefreshIcon /></t-button>
-            <t-button class="tool-button stop-portal-button" size="small" theme="danger" variant="outline" title="停止综合门户服务" :loading="stoppingPortal" @click="stopPortal"><PoweroffIcon /></t-button>
+  <main class="portal-page" :class="{ 'portal-page--closed': portalClosed, 'portal-page--restarting': restartingPortal }">
+    <section v-if="restartingPortal" class="portal-closed-screen" role="status" aria-live="polite">
+      <div class="portal-closed-content">
+        <img class="portal-restarting-image" :src="restartIcon" alt="平台正在重启" />
+        <h1 class="portal-closed-title">正在重启平台</h1>
+        <p class="portal-closed-description">系统集指挥调度枢纽正在重新启动，服务恢复后页面将自动刷新。</p>
+        <p v-if="restartNotice" class="portal-restart-warning">{{ restartNotice }}</p>
+        <p class="portal-closed-guide">如未恢复，请在本机运行 <code>start.ps1</code> 或 <code>npm run start</code>，然后刷新页面。</p>
+      </div>
+    </section>
+    <section v-else-if="portalClosed" class="portal-closed-screen" role="status" aria-live="polite">
+      <div class="portal-closed-content">
+        <img class="portal-closed-image" :src="outIcon" alt="平台已关闭" />
+        <h1 id="portal-closed-title" class="portal-closed-title" tabindex="-1">平台已关闭</h1>
+        <p class="portal-closed-description">系统集指挥调度枢纽已执行关闭操作，当前页面不再提供系统管理功能。</p>
+        <div class="portal-closed-divider"></div>
+        <p class="portal-closed-guide">如需继续使用，请在本机重新启动平台后，再打开管理页面。</p>
+        <p class="portal-closed-command">start.ps1 <span>或</span> npm run start</p>
+        <p class="portal-closed-address">访问地址：127.0.0.1:8484</p>
+        <p class="portal-closed-note">现在可以安全关闭此浏览器标签页。</p>
+      </div>
+    </section>
+    <template v-else>
+    <!-- ====== 顶部导航栏 ====== -->
+    <header class="top-bar">
+      <div class="top-bar-left">
+        <div class="logo-area">
+          <div class="logo-title-group">
+            <span class="logo-main">系统集指挥调度枢纽</span>
+            <span class="logo-en">Multi-System Command & Coordination Hub</span>
           </div>
         </div>
+        <div class="summary-pills">
+          <div class="pill pill-running"><span class="pill-dot running"></span><b>运行中</b><em>{{ healthyCount }}</em></div>
+          <div class="pill pill-total"><span class="pill-dot total"></span><b>已登记</b><em>{{ projects.length }}</em></div>
+        </div>
+      </div>
+      <div class="top-bar-center">
+        <div class="infra-chip" :class="{ up: dockerDesktopStarted === true }">
+          <span class="chip-dot"></span>
+          <b>Docker Desktop</b>
+          <span class="status-badge" :title="dockerStatusDetail" :class="dockerDesktopStarted === true ? 'success' : 'default'">{{ dockerShortText }}</span>
+        </div>
+        <div class="infra-chip" :class="{ up: infrastructure.postgres?.running }">
+          <span class="chip-dot"></span>
+          <b>PostgreSQL 14</b>
+          <span class="status-badge" :class="infrastructure.postgres?.running ? 'success' : 'default'">{{ infrastructure.postgres?.running ? '可用' : '不可用' }}</span>
+          <small>5432</small>
+        </div>
+        <div class="infra-chip" :class="{ up: infrastructure.nocodb?.running }">
+          <span class="chip-dot"></span>
+          <b>NocoDB</b>
+          <span class="status-badge" :class="infrastructure.nocodb?.running ? 'success' : 'default'">{{ infrastructure.nocodb?.running ? '可用' : '不可用' }}</span>
+          <small>8080</small>
+        </div>
+      </div>
+      <div class="top-bar-right">
+        <a class="tb-action-btn tb-github" href="https://github.com/goubeng/system-portal/tree/main" target="_blank" rel="noopener noreferrer" title="在 GitHub 打开 main 分支">
+          <svg class="github-logo" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" focusable="false">
+            <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.65 7.65 0 0 1 2-.27c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
+          </svg> GitHub
+        </a>
+        <button class="tb-action-btn tb-help" @click="helpDialogVisible = true">
+          <help-circle-icon /> 帮助
+        </button>
+        <button class="tb-action-btn tb-restart" :disabled="restartingPortal || exitingPortal || stoppingAll" @click="restartConfirmVisible = true">
+          <refresh-icon /> 重启平台
+        </button>
+        <button class="tb-action-btn tb-exit" :disabled="exitingPortal || restartingPortal || stoppingAll" :aria-busy="exitingPortal" @click="exitPortal">
+          <poweroff-icon /> {{ exitingPortal ? '正在关闭…' : '关闭平台' }}
+        </button>
       </div>
     </header>
 
-    <t-alert v-if="source.name==='file'" class="source-alert" theme="warning" :close="false" :message="`卡片来自本地配置文件（只读备份）：${source.error||'数据库未连接'}。数据库恢复后点击刷新即可改为读取 pm_projects 表。`" />
-    <t-alert v-else-if="source.warnings?.length" class="source-alert" theme="info" :close="false" :message="source.warnings.join('；')" />
-    <section class="system-grid">
-      <article v-for="(card,index) in systemCards" :key="card.key" class="system-card" :class="`status-${card.item.status}`">
-        <div class="card-topline">
-          <div class="system-title">
-            <span class="system-index">{{ displayIndex(index) }}</span>
-            <div>
-              <h3>{{ card.item.name }}</h3>
+    <div class="main-content" style="padding-bottom: 40px; overflow-y: auto; flex: 1;">
+      <div class="system-search-toolbar">
+        <div class="system-search-field">
+          <t-input
+            v-model="systemSearch"
+            clearable
+            aria-label="搜索系统"
+            placeholder="搜索系统名称、编号、描述或端口"
+            @keydown.enter.prevent="locateFirstMatch"
+            @keydown.esc="systemSearch = ''"
+          >
+            <template #prefix-icon><search-icon /></template>
+          </t-input>
+        </div>
+        <t-button class="stop-all-button" theme="danger" variant="outline" shape="round" :loading="stoppingAll" :disabled="exitingPortal || restartingPortal" @click="stopAll">
+          <template #icon><stop-circle-icon /></template>停止所有系统服务
+        </t-button>
+      </div>
+      <div v-if="systemSearch.trim() && !displayProjects.length" class="system-search-empty-state">
+        未找到匹配的系统，请更换关键词
+      </div>
+      <!-- ====== 卡片网格 ====== -->
+      <section v-if="displayProjects.length" class="card-grid">
+        <article
+          v-for="item in displayProjects" :key="item.isGroup ? item.groupId : item.id"
+          :id="'project-card-' + (item.groupId || item.id)"
+          class="card" :class="[`card--${item.status}`, item.lifecycle !== 'active' ? `card--${item.lifecycle}` : '', { 'card--located': locatedCardKey === (item.groupId || item.id) }]">
+
+          <!-- 头部行 -->
+          <div class="card-head">
+            <div class="card-head-left">
+              <span class="card-num">{{ String(item.originalIndex).padStart(2, '0') }}</span>
+              <h3 class="card-title">{{ item.name }}</h3>
+            </div>
+            <div class="card-head-right">
+              <t-tag class="card-status-tag" size="small" :theme="statusMeta(item.status).theme" variant="light">{{ statusMeta(item.status).label }}</t-tag>
             </div>
           </div>
-          <div class="status-stack">
-            <t-tag :class="statusMeta(card.item.status).className" :theme="statusMeta(card.item.status).theme" variant="light">{{ statusMeta(card.item.status).label }}</t-tag>
-            <span v-if="!card.versions && card.item.lifecycle==='legacy'" class="lifecycle legacy">计划替代</span>
-            <span v-else-if="!card.versions && card.item.lifecycle==='replacement'" class="lifecycle replacement">新版实现</span>
+
+          <!-- 版本切换行 -->
+          <div class="card-version-row" v-if="item.isGroup">
+            <div class="capsule-toggle">
+              <div 
+                v-for="v in item.availableVersions" 
+                :key="v" 
+                class="capsule-opt" 
+                :class="{ active: item.activeVersion === v }"
+                @click="activeVersions[item.groupId] = v"
+              >{{ v }}</div>
+            </div>
           </div>
-        </div>
-        <div v-if="card.versions" class="version-switch" role="group" aria-label="系统版本切换">
-          <button v-for="version in card.versions" :key="version.id" type="button" :class="{active:selectedVersionId(card)===version.id}" :aria-pressed="selectedVersionId(card)===version.id" @click="selectedVersionIds[card.key]=version.id">{{ versionLabel(version) }}</button>
-        </div>
-        <div class="tag-row">
-          <span class="platform-tag" title="PC端" aria-label="PC端"><DesktopIcon /></span>
-          <span v-if="card.item.mobileEntry" class="platform-tag" title="移动端" aria-label="移动端"><MobileIcon /></span>
-          <span v-for="tech in compactTechTags(card.item)" :key="tech">{{ tech }}</span>
-        </div>
-        <p class="description">{{ card.item.description }}</p>
-        <div class="access-row">
-          <div v-if="accessGroups(card.item).length" class="access-list">
-            <div v-for="group in accessGroups(card.item)" :key="group.type" class="access-group">
-              <div class="access-type" :title="group.label" :aria-label="group.label">
-                <DesktopIcon v-if="group.type==='pc'" />
-                <MobileIcon v-else />
-                <em>{{ group.label }}</em>
+
+          <!-- 技术标签行 -->
+          <div class="tag-row">
+            <t-tooltip content="支持 PC 端" v-if="item.entry !== false">
+              <span class="device-icon device-icon--pc">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+              </span>
+            </t-tooltip>
+            <t-tooltip content="支持移动端" v-if="item.mobileEntry">
+              <span class="device-icon device-icon--mobile">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="3"/><path d="M12 18h.01"/></svg>
+              </span>
+            </t-tooltip>
+            <span class="tag tag--port" v-if="item.ports?.webPort || item.recommended?.webPort">
+              {{ (item.ports || item.recommended).webPort }}{{ (item.ports || item.recommended).apiPort ? '/' + (item.ports || item.recommended).apiPort : '' }}
+            </span>
+            <span class="tag tag--db" :class="{ 'tag--db-none': !item.database || item.database.includes('无') }">
+              {{ item.database || '无数据库' }}
+            </span>
+            <span v-for="t in item.techStack" :key="t" class="tag tag--tech">{{ t }}</span>
+          </div>
+
+          <!-- 描述 -->
+          <p class="card-desc">{{ item.description }}</p>
+
+          <!-- URL区域 -->
+          <div class="card-urls" v-if="['healthy','external','starting'].includes(item.status) && item.ports">
+            <!-- PC端 -->
+            <div class="url-row-group">
+              <div class="url-label">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+                <span>PC端</span>
               </div>
-              <div class="access-links">
-                <div v-for="url in group.urls" :key="url" class="access-item">
-                  <a :href="url" target="_blank" rel="noopener noreferrer">{{ url }}</a>
-                  <t-button class="copy-button" size="small" theme="default" variant="text" title="复制访问地址" @click="copyUrl(url)"><CopyIcon /></t-button>
+              <div class="url-items">
+                <div class="url-item" v-for="u in pcUrls(item)" :key="u">
+                  <a :href="u" target="_blank" class="url" :class="{ 'url--lan': isLanHighlight(u) }">{{ u }}</a>
+                  <t-tooltip content="复制地址">
+                    <button class="copy-btn" @click="copyText(u)">
+                      <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                    </button>
+                  </t-tooltip>
+                </div>
+              </div>
+            </div>
+            <!-- 移动端 -->
+            <div class="url-row-group" v-if="item.mobileEntry">
+              <div class="url-label">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="3"/><path d="M12 18h.01"/></svg>
+                <span>移动端</span>
+              </div>
+              <div class="url-items">
+                <div class="url-item" v-for="u in mobileUrls(item)" :key="u">
+                  <a :href="u" target="_blank" class="url" :class="{ 'url--lan': isLanHighlight(u) }">{{ u }}</a>
+                  <t-tooltip content="复制地址">
+                    <button class="copy-btn" @click="copyText(u)">
+                      <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                    </button>
+                  </t-tooltip>
                 </div>
               </div>
             </div>
           </div>
-          <em v-else class="access-placeholder">启动后生成</em>
-        </div>
-        <div class="card-actions">
-          <t-button class="log-button" size="small" theme="default" variant="text" @click="showLogs(card.item)"><FileIcon />运行日志</t-button>
-          <div class="primary-actions">
-            <t-button size="small" :theme="primaryActionTheme(card.item)" :loading="busyId===card.item.id && !!busyAction" :disabled="primaryActionDisabled(card.item)" @click="projectAction(card.item, primaryAction(card.item))">{{ primaryActionLabel(card.item) }}</t-button>
-            <t-button size="small" theme="default" variant="outline" :disabled="!card.item.url" @click="openProject(card.item)">进入系统</t-button>
-            <t-button size="small" theme="default" variant="outline" @click="showDetails(card.item)">详情</t-button>
-          </div>
-        </div>
-        <p v-if="card.item.status==='external'" class="hint">外部运行，门户不停止。</p>
-        <p v-if="card.item.status==='conflict'" class="hint danger">端口被其他程序占用。</p>
-      </article>
-    </section>
 
-    <footer class="portal-footer">Design By ZHANGFENG</footer>
-
-    <t-dialog v-model:visible="logDialog.visible" :header="`${logDialog.name} · 运行日志`" width="760px" :footer="false">
-      <pre class="log-view">{{ logDialog.lines.length ? logDialog.lines.join('\n') : '暂无日志。项目可能尚未由本门户启动。' }}</pre>
-    </t-dialog>
-
-    <t-dialog v-model:visible="orderDialog.visible" header="显示顺序配置" width="620px" :footer="false">
-      <div class="order-dialog">
-        <div
-          v-for="(item,index) in orderItems"
-          :key="item.id"
-          class="order-item"
-          :class="{'is-dragging': draggedOrderId===item.id}"
-          draggable="true"
-          @dragstart="startOrderDrag(item.id)"
-          @dragover.prevent="dragOverOrder(index)"
-          @drop.prevent="dropOrder"
-          @dragend="endOrderDrag"
-        >
-          <span class="drag-handle">⋮⋮</span>
-          <span class="order-index">{{ index+1 }}</span>
-          <div>
-            <strong>{{ item.name }}</strong>
-            <small>{{ item.shortName || item.implementation }}</small>
+          <!-- 底部操作 -->
+          <div class="card-foot">
+            <button class="foot-link text-gray" v-if="['healthy','external','starting'].includes(item.status)" @click="showLogs(item)">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+              日志
+            </button>
+            <div class="foot-actions" style="margin-left: auto;">
+              <t-button
+                v-if="['healthy','external','starting'].includes(item.status) && item.managed"
+                theme="danger" size="small"
+                :loading="busyId===item.id && busyAction==='stop'"
+                :disabled="busyId===item.id && busyAction!=='stop'"
+                @click="projectAction(item,'stop')">
+                停止服务
+              </t-button>
+              <t-button
+                v-if="!['healthy','external','starting'].includes(item.status)"
+                theme="primary" size="small"
+                :loading="busyId===item.id && busyAction==='start'"
+                :disabled="busyId===item.id"
+                @click="projectAction(item,'start')">
+                启动服务
+              </t-button>
+              <t-button v-if="['healthy','external','starting'].includes(item.status)" variant="outline" size="small" :disabled="!item.url" @click="openProject(item)">打开系统</t-button>
+              <t-button variant="outline" size="small" @click="showDetail(item)">详情</t-button>
+            </div>
           </div>
-        </div>
-        <div class="order-footer">
-          <t-button size="small" theme="default" variant="outline" @click="orderDialog.visible=false">取消</t-button>
-          <t-button size="small" theme="primary" :loading="savingOrder" @click="saveOrder">保存顺序</t-button>
-        </div>
-      </div>
-    </t-dialog>
 
-    <t-dialog v-model:visible="helpDialog.visible" header="外部服务停止说明" placement="center" width="920px" :footer="false">
-      <div class="ops-help">
-        <p>当卡片显示“外部运行”时，说明该系统不是由当前门户启动的，门户无法直接停止它。需要在 PowerShell 中按端口找到进程后手动停止。</p>
-        <section>
-          <h4><TerminalIcon />打开 PowerShell</h4>
-          <ol>
-            <li>按 <kbd>Win</kbd> 键，输入 <strong>PowerShell</strong>。</li>
-            <li>选择 <strong>Windows PowerShell</strong> 打开。</li>
-            <li>如果停止进程失败，再右键选择 <strong>以管理员身份运行</strong>。</li>
-          </ol>
-        </section>
-        <section>
-          <h4><TerminalIcon />按端口查进程</h4>
-          <div class="command-box">
-            <pre>{{ opsCommands.findProcess }}</pre>
-            <t-button size="small" theme="default" variant="outline" @click="copyCommand(opsCommands.findProcess)"><CopyIcon />复制</t-button>
-          </div>
-          <p>把 `3301` 换成卡片详情里的实际 Web 端口，例如 `3401`、`3601`。</p>
-        </section>
-        <section>
-          <h4><TerminalIcon />停止进程</h4>
-          <div class="command-box">
-            <pre>{{ opsCommands.stopProcess }}</pre>
-            <t-button size="small" theme="default" variant="outline" @click="copyCommand(opsCommands.stopProcess)"><CopyIcon />复制</t-button>
-          </div>
-          <p>把 `进程ID` 换成上一条命令里 `OwningProcess` 显示的数字。</p>
-        </section>
-        <section>
-          <h4><TerminalIcon />确认端口已释放</h4>
-          <div class="command-box">
-            <pre>{{ opsCommands.confirmPort }}</pre>
-            <t-button size="small" theme="default" variant="outline" @click="copyCommand(opsCommands.confirmPort)"><CopyIcon />复制</t-button>
-          </div>
-          <p>如果没有返回 `Listen` 状态，说明端口已经释放。回到门户点击刷新图标即可更新状态。</p>
-        </section>
-      </div>
-    </t-dialog>
+          <!-- 提示条 -->
+          <div v-if="item.status==='external'" class="card-hint warn">该服务不是由当前门户启动，无法强制停止。</div>
+          <div v-if="item.status==='conflict'" class="card-hint error">检测到 Web 或 API 端口有监听，但系统健康检查未通过。请查看日志与帮助。</div>
+        </article>
+      </section>
+    </div>
 
-    <t-dialog v-model:visible="stopPortalDialog.visible" header="停止综合门户服务" placement="center" width="460px" :footer="false">
-      <div class="stop-confirm">
-        <div class="stop-confirm-icon"><PoweroffIcon /></div>
-        <div>
-          <h4>确认停止综合门户服务？</h4>
-          <p>停止后当前页面将无法继续访问，需要重新启动门户服务后才能再次打开。</p>
+    <t-dialog v-model:visible="restartConfirmVisible" header="重启平台" placement="center" width="460px" :footer="false">
+      <div class="restart-confirm-message">
+        <p>确认重启“系统集指挥调度枢纽”吗？这将重新启动本机 8484 管理服务，服务恢复后页面会自动刷新。</p>
+        <div class="restart-confirm-warning">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+            <circle cx="12" cy="12" r="9" />
+            <path d="M12 7.5v5.5" />
+            <circle cx="12" cy="16.5" r="1" fill="currentColor" stroke="none" />
+          </svg>
+          <p>不会主动停止业务系统，但原平台启动的服务可能在重启后显示为“外部运行”，无法再由本平台直接停止。</p>
         </div>
       </div>
-      <div class="dialog-actions">
-        <t-button size="small" theme="default" variant="outline" @click="stopPortalDialog.visible=false">取消</t-button>
-        <t-button size="small" theme="danger" :loading="stoppingPortal" @click="confirmStopPortal">确认停止</t-button>
+      <div class="restart-confirm-actions">
+        <t-button size="medium" variant="outline" @click="restartConfirmVisible = false">取消</t-button>
+        <t-button size="medium" theme="primary" :loading="restartingPortal" @click="restartPortal">确认重启</t-button>
       </div>
     </t-dialog>
+    <!-- ====== 日志弹窗 ====== -->
+    <t-dialog v-model:visible="logDialog.visible" :header="`${logDialog.name} · 运行日志`" width="900px" :footer="false">
+      <pre class="log-pre">{{ logDialog.lines.length ? logDialog.lines.join('\n') : '暂无日志。项目可能尚未由本门户启动。' }}</pre>
+    </t-dialog>
 
-    <t-dialog v-model:visible="detailDialog.visible" :header="`${detailDialog.item?.name || ''} · 系统详情`" width="720px" :footer="false">
-      <div v-if="detailDialog.item" class="detail-view">
-        <p>{{ detailDialog.item.description }}</p>
-        <dl class="detail-list">
+    <!-- ====== 详情弹窗 ====== -->
+    <t-dialog v-model:visible="detailDialog.visible" :header="`${detailDialog.item?.name || ''} · 项目详情`" width="640px" :footer="false">
+      <div v-if="detailDialog.item" class="detail-body">
+        <dl class="dl">
+          <div><dt>编号</dt><dd>{{ detailDialog.item.id }}</dd></div>
           <div><dt>实现方式</dt><dd>{{ detailDialog.item.implementation }}</dd></div>
-          <div><dt>项目目录</dt><dd>{{ detailDialog.item.folder }}</dd></div>
+          <div><dt>项目目录</dt><dd>{{ detailDialog.item.directory || detailDialog.item.folder }}</dd></div>
           <div><dt>架构概要</dt><dd>{{ detailDialog.item.architecture }}</dd></div>
-          <div><dt>技术栈</dt><dd>{{ detailDialog.item.techStack.join(' · ') }}</dd></div>
-          <div><dt>推荐端口</dt><dd>Web {{ detailDialog.item.recommended.webPort }}<template v-if="detailDialog.item.recommended.apiPort"> / API {{ detailDialog.item.recommended.apiPort }}</template></dd></div>
+          <div><dt>推荐端口</dt><dd>Web {{ detailDialog.item.recommended?.webPort }}<template v-if="detailDialog.item.recommended?.apiPort"> / API {{ detailDialog.item.recommended.apiPort }}</template></dd></div>
           <div v-if="detailDialog.item.ports"><dt>实际端口</dt><dd>Web {{ detailDialog.item.ports.webPort }}<template v-if="detailDialog.item.ports.apiPort"> / API {{ detailDialog.item.ports.apiPort }}</template></dd></div>
-          <div v-if="detailAccessUrls(detailDialog.item).length"><dt>访问地址</dt><dd><template v-for="group in detailAccessGroups(detailDialog.item)" :key="group.type">{{ group.label }}：{{ group.urls.join(' · ') }}<br /></template></dd></div>
-          <div v-if="detailDialog.item.dependencies.length"><dt>依赖</dt><dd>{{ detailDialog.item.dependencies.join(' · ') }}</dd></div>
+          <div v-if="detailDialog.item.dependencies?.length"><dt>依赖</dt><dd>{{ detailDialog.item.dependencies.join(' · ') }}</dd></div>
           <div v-if="detailDialog.item.lastExit"><dt>上次退出</dt><dd>{{ detailDialog.item.lastExit.code ?? detailDialog.item.lastExit.signal ?? '未知' }}</dd></div>
         </dl>
       </div>
     </t-dialog>
+
+    <!-- ====== 帮助弹窗 ====== -->
+    <t-dialog v-model:visible="helpDialogVisible" header="系统启动与故障排查" width="min(760px, 94vw)" :footer="false">
+      <div class="help-content">
+        <h4>1. 确认访问地址与项目</h4>
+        <p>系统集指挥调度枢纽地址：<a :href="portalAddress" target="_blank" rel="noopener">{{ portalAddress }}</a>。业务系统请使用启动成功后卡片中的地址；API 端口不是网页入口。</p>
+        <t-select v-model="helpProjectId" aria-label="排查项目" :options="projects.map(p => ({ label: p.name, value: p.id }))" />
+        <dl v-if="helpProject" class="dl">
+          <div><dt>项目目录</dt><dd>{{ helpProject.directory || helpProject.folder }}</dd></div>
+          <div><dt>当前状态</dt><dd>{{ statusMeta(helpProject.status).label }}</dd></div>
+          <div><dt>Web / API</dt><dd>{{ helpProject.ports?.webPort || helpProject.recommended?.webPort }} / {{ helpProject.ports?.apiPort || helpProject.recommended?.apiPort || '无独立 API' }}</dd></div>
+          <div v-if="helpProject.url"><dt>访问地址</dt><dd><a :href="helpProject.url" target="_blank" rel="noopener">{{ helpProject.url }}</a></dd></div>
+        </dl>
+        <p v-if="helpProject?.fixedPorts">此项目固定使用上述 Web/API 端口，不支持自动换端口。</p>
+        <h4>2. 先看启动错误和运行日志</h4>
+        <p>点击卡片“运行日志”，检查最后一次启动后的错误。没有进程监听只表示该端口当前空闲，也可能是进程已退出、依赖失败或端口被 Windows 保留；不能据此认定系统正常。</p>
+        <p>日志文件位于系统集指挥调度枢纽目录的 <code>runtime/logs/{{ helpProjectId }}.log</code>。历史日志可能对应旧项目名称，以本次启动时间为准。</p>
+        <p>若系统集指挥调度枢纽自身打不开：在门户目录执行 <code>npm run start</code> 查看构建和启动错误，或检查 <code>runtime/portal.out.log</code> 与 <code>runtime/portal.err.log</code>。门户端口无监听时，先排查依赖与构建是否成功。</p>
+        <h4>3. 精确查询 Web 与 API 端口（PowerShell）</h4>
+        <pre class="code-block">{{ helpPortCommand }}</pre>
+        <p>只检查 Listen 状态的精确端口，查看 OwningProcess。若有结果，再核对进程路径和命令行（把 12345 换成查到的 PID）：</p>
+        <pre class="code-block">Get-CimInstance Win32_Process -Filter "ProcessId = 12345" | Select-Object ProcessId, ExecutablePath, CommandLine</pre>
+        <p>确认属于哪个系统后，优先在所属门户或原启动终端正常停止。不要直接结束未知 PID、Docker、数据库或系统集指挥调度枢纽进程。</p>
+        <p>无监听却出现 EACCES / EPERM / 无法绑定时，检查 Windows 保留端口范围；不要擅自删除保留范围：</p>
+        <pre class="code-block">netsh interface ipv4 show excludedportrange protocol=tcp</pre>
+        <h4>4. 根据错误处理依赖</h4>
+        <p>忘记打开 Docker 时，顶部会显示“未启动，请先打开”，请手动打开 Docker Desktop。门户仅检测当前启动状态；显示“已启动”表示 Docker Desktop 已打开，无需重复启动；显示“启动状态待确认”时，请确认软件是否已打开。</p>
+        <p>依赖缺失：进入“项目目录”，有 package-lock.json 时执行 <code>npm ci</code>，否则执行 <code>npm install</code>。然后用 <code>npm run dev</code> 在终端观察完整错误；独立启动成功后，门户会识别外部服务。</p>
+        <p>数据库失败或 Docker 检测超时：Docker Desktop 窗口打开不代表引擎正常。在 PowerShell 执行下列只读查询；长时间无响应可按 Ctrl+C 取消。</p>
+        <pre class="code-block">docker info --format '{{dockerVersionFormat}}'
+docker ps --format '{{dockerContainersFormat}}'</pre>
+        <p v-if="helpProject?.requiresDocker">此项目通过 <code>docker exec postgres14</code> 访问 <code>nocodb_data</code>。先确认引擎有响应、postgres14 容器运行，再排查数据库错误。5432 可连接不能替代这条执行链；不要改为 Mock 掩盖故障。</p>
+        <h4>5. 重试与确认</h4>
+        <p>修复后点击卡片“启动服务”，待状态变为“运行中”或“外部运行”再打开系统。修改门户注册配置或后端后需重启门户才生效；停止门户可能同时停止它管理的业务项目，请先确认当前任务。</p>
+      </div>
+    </t-dialog>
+    </template>
   </main>
 </template>
 
+<!-- ================================================================ -->
 <script setup>
-import {computed,onMounted,reactive,ref} from 'vue'
-import {MessagePlugin} from 'tdesign-vue-next'
-import {CopyIcon,DesktopIcon,FileIcon,HelpCircleIcon,MobileIcon,PoweroffIcon,RefreshIcon,SettingIcon,TerminalIcon} from 'tdesign-icons-vue-next'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { MessagePlugin } from 'tdesign-vue-next'
+import outIcon from './out.svg'
+import restartIcon from './restart.svg'
+import { RefreshIcon, PlayIcon, StopCircleIcon, HelpCircleIcon, PoweroffIcon, SearchIcon } from 'tdesign-icons-vue-next'
 
-const projects=ref([])
-const portal=reactive({url:'http://127.0.0.1:8484/',networkUrl:null,networkUrls:[]})
-const infrastructure=reactive({docker:{},postgres:{},nocodb:{}})
-const token=ref('')
-const refreshing=ref(false)
-const stoppingPortal=ref(false)
-const busyId=ref('')
-const busyAction=ref('')
-const logDialog=reactive({visible:false,name:'',lines:[]})
-const detailDialog=reactive({visible:false,item:null})
-const orderDialog=reactive({visible:false,ids:[]})
-const helpDialog=reactive({visible:false})
-const stopPortalDialog=reactive({visible:false})
-const opsCommands={
-  findProcess:'Get-NetTCPConnection -LocalPort 3301 | Select-Object LocalAddress,LocalPort,State,OwningProcess',
-  stopProcess:'Stop-Process -Id 进程ID',
-  confirmPort:'Get-NetTCPConnection -LocalPort 3301'
-}
-const savingOrder=ref(false)
-const draggedOrderId=ref('')
-const selectedVersionIds=reactive({})
+const projects = ref([])
+const portalClosed = ref(false)
+const exitingPortal = ref(false)
+const restartingPortal = ref(false)
+const restartConfirmVisible = ref(false)
+const restartNotice = ref('')
+const stoppingAll = ref(false)
+const systemSearch = ref('')
+const locatedCardKey = ref('')
+const systemSearchMatches = computed(() => {
+  const keyword = systemSearch.value.trim().toLocaleLowerCase()
+  if (!keyword) return []
+  return projects.value.filter(project => [
+    project.id,
+    project.groupId,
+    project.name,
+    project.shortName,
+    project.description,
+    project.ports?.webPort,
+    project.ports?.apiPort,
+    project.recommended?.webPort,
+    project.recommended?.apiPort,
+    project.webPort,
+    project.apiPort
+  ].filter(Boolean).join(' ').toLocaleLowerCase().includes(keyword))
+})
+const infrastructure = reactive({ docker: {}, postgres: {}, nocodb: {} })
+const helpDialogVisible = ref(false)
+const helpProjectId = ref('08')
+const portalAddress = ref('http://127.0.0.1:8484/')
+const dockerVersionFormat = '{{.ServerVersion}}'
+const dockerContainersFormat = '{{.Names}}: {{.Status}}'
+const helpProject = computed(() => projects.value.find(p => p.id === helpProjectId.value))
+const helpPortCommand = computed(() => {
+  const p = helpProject.value
+  const ports = p?.ports || p?.recommended
+  if (!ports) return '请先选择需要排查的项目。'
+  const values = [ports.webPort, ports.apiPort].filter(Boolean).join(', ')
+  return `Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue |\n  Where-Object { $_.LocalPort -in @(${values}) } |\n  Select-Object LocalAddress, LocalPort, OwningProcess`
+})
+const token = ref('')
+const refreshing = ref(false)
+const busyId = ref('')
+const busyAction = ref('')
+const logDialog = reactive({ visible: false, name: '', lines: [] })
+const detailDialog = reactive({ visible: false, item: null })
+let timer
+let restartPollTimer
 
-const healthyCount=computed(()=>projects.value.filter(item=>['healthy','external'].includes(item.status)).length)
-const orderItems=computed(()=>orderDialog.ids.map(id=>projects.value.find(item=>item.id===id)).filter(Boolean))
-const portalAccessUrl=computed(()=>portal.networkUrl || portal.url)
-const systemCards=computed(()=>{
-  const groups=new Map()
-  const groupOf=project=>project.groupKey||project.name
-  for(const project of projects.value){
-    const entries=groups.get(groupOf(project))||[]
-    entries.push(project)
-    groups.set(groupOf(project),entries)
-  }
-  const versionedNames=new Set([...groups].filter(([,entries])=>entries.length===2 && entries.some(item=>item.lifecycle==='replacement')).map(([name])=>name))
-  const handledNames=new Set()
-  return projects.value.flatMap(project=>{
-    const groupKey=groupOf(project)
-    if(!versionedNames.has(groupKey))return [{key:project.id,item:project,versions:null}]
-    if(handledNames.has(groupKey))return []
-    handledNames.add(groupKey)
-    const versions=groups.get(groupKey)
-    const defaultVersion=versions.find(item=>item.lifecycle==='replacement')||versions[0]
-    const selectedId=selectedVersionIds[`versions:${groupKey}`]||defaultVersion.id
-    return [{key:`versions:${groupKey}`,item:versions.find(item=>item.id===selectedId)||defaultVersion,versions}]
-  })
+const activeVersions = reactive({})
+
+/* ---- LAN IP ---- */
+const lanIPs = ref([])
+
+/* ---- 计算 ---- */
+const healthyCount = computed(() => projects.value.filter(i => ['healthy', 'external'].includes(i.status)).length)
+const dockerDesktopStarted = computed(() => {
+  const docker = infrastructure.docker
+  if (typeof docker.desktopRunning === 'boolean') return docker.desktopRunning
+  return docker.running ? true : null
+})
+const dockerShortText = computed(() => {
+  if (dockerDesktopStarted.value === true) return '已启动'
+  return dockerDesktopStarted.value === false ? '未启动，请先打开' : '启动状态待确认'
+})
+const dockerStatusDetail = computed(() => {
+  const docker = infrastructure.docker
+  if (dockerDesktopStarted.value === false) return '请手动打开 Docker Desktop，门户仅检测当前启动状态。'
+  if (dockerDesktopStarted.value !== true) return `请确认 Docker Desktop 是否已手动打开。${docker.desktopDetail || '当前启动状态待确认。'}`
+  return docker.running ? 'Docker Desktop 已启动，引擎可用。' : `Docker Desktop 已启动。${docker.detail || '引擎尚未就绪'}，无需重复打开。`
 })
 
-function assignInfrastructure(value={}){
-  Object.assign(infrastructure.docker,value.docker||{})
-  Object.assign(infrastructure.postgres,value.postgres||{})
-  Object.assign(infrastructure.nocodb,value.nocodb||{})
+const displayProjects = computed(() => {
+  const groups = []
+  const groupMap = new Map()
+  const filtering = Boolean(systemSearch.value.trim())
+  const matchedIds = filtering ? new Set(systemSearchMatches.value.map(project => project.id)) : null
+
+  projects.value.forEach(p => {
+    if (p.groupId) {
+      if (!groupMap.has(p.groupId)) {
+        const group = { isGroup: true, groupId: p.groupId, versions: {} }
+        groupMap.set(p.groupId, group)
+        groups.push(group)
+      }
+      groupMap.get(p.groupId).versions[p.versionLabel] = p
+    } else {
+      groups.push({ isGroup: false, ...p })
+    }
+  })
+
+  return groups.map((g, index) => {
+    if (g.isGroup) {
+      const versionLabels = Object.keys(g.versions).sort((a, b) => b.localeCompare(a))
+      const visibleVersions = filtering
+        ? versionLabels.filter(label => matchedIds.has(g.versions[label].id))
+        : versionLabels
+      if (!visibleVersions.length) return null
+      const preferredLabel = activeVersions[g.groupId] || (g.versions['新版'] ? '新版' : versionLabels[0])
+      const activeLabel = visibleVersions.includes(preferredLabel) ? preferredLabel : visibleVersions[0]
+      const activeProject = g.versions[activeLabel]
+      return {
+        ...activeProject,
+        isGroup: true,
+        groupId: g.groupId,
+        availableVersions: visibleVersions,
+        activeVersion: activeLabel,
+        originalIndex: index + 1
+      }
+    }
+    if (filtering && !matchedIds.has(g.id)) return null
+    return { ...g, originalIndex: index + 1 }
+  }).filter(Boolean)
+})
+
+// 切换关键词时清除旧高亮，保持原有卡片编号和顺序
+watch(systemSearch, () => { locatedCardKey.value = '' })
+
+/* ---- 系统快速定位：不改变原有卡片排序与运行状态 ---- */
+function locateFirstMatch() {
+  if (systemSearchMatches.value.length) locateProject(systemSearchMatches.value[0])
+  else if (systemSearch.value.trim()) MessagePlugin.warning('未找到匹配的系统')
 }
 
-async function api(url,options={}){
-  const response=await fetch(url,{...options,headers:{'Content-Type':'application/json',...(options.method==='POST'?{'X-Portal-Token':token.value}:{}),...options.headers}})
-  const body=await response.json().catch(()=>({message:'服务返回格式错误'}))
-  if(!response.ok)throw new Error(body.message||`HTTP ${response.status}`)
-  return body
+async function locateProject(project) {
+  if (project.groupId && project.versionLabel) activeVersions[project.groupId] = project.versionLabel
+  const key = project.groupId || project.id
+  locatedCardKey.value = key
+  await nextTick()
+  document.getElementById('project-card-' + key)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
 }
 
-const source=reactive({name:'file',error:null,warnings:[]})
+/* ---- URL ---- */
+function buildUrls(item, entry) {
+  if (!item.ports) return []
+  const p = item.ports.webPort
+  const list = [`http://127.0.0.1:${p}${entry}`]
+  for (const ip of lanIPs.value) list.push(`http://${ip}:${p}${entry}`)
+  return list
+}
+function pcUrls(item) { return buildUrls(item, item.entry || '/') }
+function mobileUrls(item) { return item.mobileEntry ? buildUrls(item, item.mobileEntry) : [] }
+function isLanHighlight(url) { return url.includes('192.168.') }
 
-async function bootstrap(){
-  const data=await api('/api/bootstrap')
-  token.value=data.token
-  projects.value=data.projects
-  Object.assign(source,{name:'file',error:null,warnings:[]},data.source||{})
-  Object.assign(portal,data.portal||{})
-  assignInfrastructure(data.infrastructure)
+function copyText(text) {
+  navigator.clipboard.writeText(text).then(() => {
+    MessagePlugin.success('地址已复制到剪贴板')
+  }).catch(() => {
+    MessagePlugin.error('复制失败，请手动复制')
+  })
 }
 
-async function refreshStatus(silent=false){
-  if(refreshing.value)return
-  refreshing.value=true
-  try{
-    const data=await api('/api/status')
-    projects.value=data.projects
-    Object.assign(source,{name:'file',error:null,warnings:[]},data.source||{})
-    assignInfrastructure(data.infrastructure)
-  }catch(error){if(!silent)MessagePlugin.error(error.message)}
-  finally{refreshing.value=false}
+/* ---- Infra ---- */
+function assignInfra(v = {}) {
+  Object.assign(infrastructure.docker, v.docker || {})
+  Object.assign(infrastructure.postgres, v.postgres || {})
+  Object.assign(infrastructure.nocodb, v.nocodb || {})
 }
 
-async function projectAction(item,action){
-  busyId.value=item.id
-  busyAction.value=action
-  try{
-    const data=await api(`/api/projects/${item.id}/${action}`,{method:'POST',body:'{}'})
-    const index=projects.value.findIndex(project=>project.id===item.id)
-    if(index>=0)projects.value[index]=data.project
-    MessagePlugin.success(action==='start'?'服务启动成功':'服务已停止')
-  }catch(error){MessagePlugin.error(error.message);await refreshStatus(true)}
-  finally{busyId.value='';busyAction.value=''}
+/* ---- API ---- */
+async function api(url, opts = {}) {
+  const r = await fetch(url, { ...opts, headers: { 'Content-Type': 'application/json', ...(opts.method === 'POST' ? { 'X-Portal-Token': token.value } : {}), ...opts.headers } })
+  const b = await r.json().catch(() => ({ message: '服务返回格式错误' }))
+  if (!r.ok) throw new Error(b.message || `HTTP ${r.status}`)
+  return b
 }
 
-async function stopPortal(){
-  stopPortalDialog.visible=true
+/* ---- bootstrap ---- */
+async function bootstrap() {
+  const d = await api('/api/bootstrap')
+  token.value = d.token
+  projects.value = d.projects
+  if (d.portal) portalAddress.value = `http://${d.portal.host}:${d.portal.port}/`
+  assignInfra(d.infrastructure)
+  if (d.lanIPs) lanIPs.value = d.lanIPs
 }
 
-async function confirmStopPortal(){
-  stoppingPortal.value=true
-  try{
-    await api('/api/portal/stop',{method:'POST',body:'{}'})
-    stopPortalDialog.visible=false
-    MessagePlugin.success('综合门户服务正在停止')
-  }catch(error){
-    MessagePlugin.error(error.message)
-    stoppingPortal.value=false
+async function detectLanIPs() {
+  try { lanIPs.value = (await api('/api/network-info')).ips || [] } catch { /* ignore */ }
+}
+
+/* ---- 刷新 ---- */
+async function refreshStatus(silent = false) {
+  if (refreshing.value || exitingPortal.value || restartingPortal.value || portalClosed.value) return
+  refreshing.value = true
+  try {
+    const d = await api('/api/status')
+    if (!portalClosed.value && !exitingPortal.value && !restartingPortal.value) {
+      projects.value = d.projects
+      assignInfra(d.infrastructure)
+    }
+  } catch (e) { if (!silent && !portalClosed.value) MessagePlugin.error(e.message) }
+  finally { refreshing.value = false }
+}
+
+/* ---- 项目操作 ---- */
+async function projectAction(item, action) {
+  busyId.value = item.id; busyAction.value = action
+  try {
+    const d = await api(`/api/projects/${item.id}/${action}`, { method: 'POST', body: '{}' })
+    const i = projects.value.findIndex(p => p.id === item.id)
+    if (i >= 0) projects.value[i] = d.project
+    MessagePlugin.success(action === 'start' ? '服务启动成功' : '服务已停止')
+  } catch (e) { MessagePlugin.error(e.message); await refreshStatus(true) }
+  finally { busyId.value = ''; busyAction.value = '' }
+}
+
+async function stopAll() {
+  if (stoppingAll.value || exitingPortal.value || restartingPortal.value) return
+  stoppingAll.value = true
+  try {
+    for (const project of projects.value) {
+      if (project.managed) await projectAction(project, 'stop')
+    }
+  } finally { stoppingAll.value = false }
+}
+
+async function restartPortal() {
+  if (restartingPortal.value || exitingPortal.value || stoppingAll.value) return
+  restartingPortal.value = true
+  restartNotice.value = ''
+  try {
+    const { previousPid } = await api('/api/restart', { method: 'POST', body: '{}' })
+    restartConfirmVisible.value = false
+    clearInterval(timer)
+    timer = undefined
+    const startedAt = Date.now()
+    restartPollTimer = setInterval(async () => {
+      try {
+        const result = await fetch('/healthz', { cache: 'no-store' })
+        if (result.ok) {
+          const health = await result.json()
+          if (health.ok && health.pid !== previousPid) {
+            clearInterval(restartPollTimer)
+            window.location.reload()
+            return
+          }
+        }
+      } catch { /* 等待服务恢复 */ }
+      if (Date.now() - startedAt > 90000) {
+        clearInterval(restartPollTimer)
+        restartNotice.value = '未检测到平台恢复，请查看 runtime/portal.restart.status.json 与 portal.restart.err.log，或手动启动。'
+      }
+    }, 1200)
+  } catch (error) {
+    restartingPortal.value = false
+    restartConfirmVisible.value = false
+    const oldServer = /接口不存在|HTTP 404|Not Found/.test(error.message)
+    MessagePlugin.error(oldServer
+      ? '当前后端没有重启接口。请先在本机手动重启一次管理平台，使新的服务端代码生效。'
+      : `重启平台失败：${error.message}`)
   }
 }
 
-function openOrderDialog(){
-  orderDialog.ids=projects.value.map(item=>item.id)
-  orderDialog.visible=true
-}
-
-function startOrderDrag(id){
-  draggedOrderId.value=id
-}
-
-function dragOverOrder(index){
-  const currentIndex=orderDialog.ids.indexOf(draggedOrderId.value)
-  if(currentIndex<0 || currentIndex===index)return
-  const ids=[...orderDialog.ids]
-  const [dragged]=ids.splice(currentIndex,1)
-  ids.splice(index,0,dragged)
-  orderDialog.ids=ids
-}
-
-function dropOrder(){
-  draggedOrderId.value=''
-}
-
-function endOrderDrag(){
-  draggedOrderId.value=''
-}
-
-async function saveOrder(){
-  savingOrder.value=true
-  try{
-    const data=await api('/api/projects/order',{method:'POST',body:JSON.stringify({ids:orderDialog.ids})})
-    projects.value=data.projects
-    orderDialog.visible=false
-    MessagePlugin.success('显示顺序已保存')
-  }catch(error){MessagePlugin.error(error.message)}
-  finally{savingOrder.value=false}
-}
-
-function openProject(item){
-  if(item.url)window.open(item.url,'_blank','noopener,noreferrer')
-}
-
-function displayIndex(index){
-  return String(index+1).padStart(2,'0')
-}
-
-function selectedVersionId(card){
-  return selectedVersionIds[card.key]||card.item.id
-}
-
-function versionLabel(item){
-  return item.lifecycle==='replacement'?'新版':'旧版'
-}
-
-function accessUrl(item){
-  return accessUrls(item,'pc')[0] || ''
-}
-
-function accessUrls(item,type='pc'){
-  if(!item.url)return []
-  if(type==='mobile')return uniqueUrls([item.mobileUrl,item.networkMobileUrl,...(item.networkMobileUrls||[])])
-  return uniqueUrls([item.url,item.networkUrl,...(item.networkUrls||[])])
-}
-
-function accessGroups(item){
-  const groups=[]
-  const pcUrls=accessUrls(item,'pc')
-  const mobileUrls=accessUrls(item,'mobile')
-  if(pcUrls.length)groups.push({type:'pc',label:'PC端',urls:pcUrls})
-  if(mobileUrls.length)groups.push({type:'mobile',label:'移动端',urls:mobileUrls})
-  return groups
-}
-
-function detailAccessGroups(item){
-  return item ? accessGroups(item) : []
-}
-
-function detailAccessUrls(item){
-  return detailAccessGroups(item).flatMap(group=>group.urls)
-}
-
-function uniqueUrls(urls){
-  return urls.filter(Boolean).filter((url,index,array)=>array.indexOf(url)===index)
-}
-
-function showDetails(item){
-  detailDialog.item=item
-  detailDialog.visible=true
-}
-
-function primaryAction(item){
-  return item.managed ? 'stop' : 'start'
-}
-
-function primaryActionLabel(item){
-  if(item.status==='external')return '外部运行'
-  return item.managed ? '停止服务' : '启动服务'
-}
-
-function primaryActionTheme(item){
-  return item.managed ? 'danger' : 'primary'
-}
-
-function primaryActionDisabled(item){
-  return busyId.value===item.id || item.status==='external' || (item.status==='starting' && !item.managed)
-}
-
-async function copyUrl(url){
-  if(!url)return
-  try{
-    await navigator.clipboard.writeText(url)
-    MessagePlugin.success('地址已复制')
-  }catch{
-    MessagePlugin.error('复制失败，请手动复制地址')
+async function exitPortal() {
+  if (exitingPortal.value || restartingPortal.value || stoppingAll.value || portalClosed.value) return
+  exitingPortal.value = true
+  try {
+    await api('/api/exit', { method: 'POST', body: '{}' })
+    clearInterval(timer)
+    timer = undefined
+    portalClosed.value = true
+    await nextTick()
+    document.getElementById('portal-closed-title')?.focus()
+  } catch (e) {
+    MessagePlugin.error(`关闭平台失败：${e.message}`)
+  } finally {
+    exitingPortal.value = false
   }
 }
 
-async function copyCommand(command){
-  try{
-    await navigator.clipboard.writeText(command)
-    MessagePlugin.success('命令已复制')
-  }catch{
-    MessagePlugin.error('复制失败，请手动复制命令')
-  }
+function openProject(item) { if (item.url) window.open(item.url, '_blank', 'noopener,noreferrer') }
+
+async function showLogs(item) {
+  logDialog.name = item.name; logDialog.visible = true
+  try { logDialog.lines = (await api(`/api/projects/${item.id}/logs?tail=200`)).lines }
+  catch (e) { logDialog.lines = [e.message] }
 }
 
-function compactTechTags(item){
-  const tags=[item.implementation]
-  const has=value=>normalizeTech(item.implementation).includes(value)
-  for(const tech of item.techStack){
-    const normalized=normalizeTech(tech)
-    if(has('vue3') && normalized.includes('vue3'))continue
-    if(has('arco') && normalized.includes('arco'))continue
-    if(has('tdesign') && normalized.includes('tdesign'))continue
-    if(tags.some(tag=>normalizeTech(tag)===normalized))continue
-    tags.push(tech)
-    if(tags.length>=3)break
-  }
-  return tags
+function showDetail(item) { detailDialog.item = item; detailDialog.visible = true }
+
+function statusMeta(s) {
+  return ({
+    healthy: { label: '运行中', theme: 'success' },
+    external: { label: '外部运行', theme: 'warning' },
+    starting: { label: '启动中', theme: 'primary' },
+    conflict: { label: '服务待核查', theme: 'danger' },
+    exited: { label: '已退出', theme: 'danger' },
+    stopped: { label: '未启动', theme: 'default' }
+  })[s] || { label: s || '未知', theme: 'default' }
 }
 
-function normalizeTech(value){
-  return String(value).toLowerCase().replace(/[^a-z0-9]/g,'')
-}
-
-async function showLogs(item){
-  logDialog.name=item.name
-  logDialog.visible=true
-  try{logDialog.lines=(await api(`/api/projects/${item.id}/logs?tail=160`)).lines}
-  catch(error){logDialog.lines=[error.message]}
-}
-
-function statusMeta(status){
-  return {
-    healthy:{label:'运行中',theme:'success'},external:{label:'外部运行',theme:'warning'},starting:{label:'启动中',theme:'primary',className:'status-starting'},
-    conflict:{label:'端口冲突',theme:'danger'},exited:{label:'已退出',theme:'danger'},stopped:{label:'未启动',theme:'default'}
-  }[status]||{label:status||'未知',theme:'default'}
-}
-
-onMounted(async()=>{
-  try{await bootstrap()}catch(error){MessagePlugin.error(error.message)}
+onMounted(async () => {
+  try { await bootstrap() } catch (e) { MessagePlugin.error(e.message) }
+  await detectLanIPs()
+  if (!portalClosed.value) timer = setInterval(() => refreshStatus(true), 4000)
+})
+onBeforeUnmount(() => {
+  clearInterval(timer)
+  clearInterval(restartPollTimer)
 })
 </script>
 
-<style scoped>
-:global(*){box-sizing:border-box}
-:global(body){margin:0;background:#f3f6fb;color:#172033;font-family:Inter,"Microsoft YaHei",sans-serif}
-.portal-page{min-height:100vh;padding:0 0 24px;background:#f3f6fb}
-.top-panel{width:100%;margin:0 0 18px;padding:16px 0;background:#19243b;color:#fff;box-shadow:0 8px 22px rgba(24,36,59,.12)}
-.top-panel>*{width:calc(100% - 96px);max-width:1680px;margin-left:auto;margin-right:auto}
-.top-main{display:grid;grid-template-columns:minmax(260px,1fr) minmax(900px,auto);align-items:center;gap:10px}
-.portal-info{min-width:0}
-.title-line{display:flex;align-items:baseline;gap:10px;min-width:0}
-.title-line h1{margin:0;font-size:24px;line-height:1.2;white-space:nowrap}
-.portal-address{display:flex;align-items:center;gap:10px;min-width:0;margin-top:8px}
-.portal-url{min-width:0;color:#8fb2ff;font-size:13px;font-weight:650;text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.portal-copy{flex:0 0 auto;width:26px;padding:0;color:#9fb8f3}
-.top-tools{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:10px;min-width:0}
-.hero-actions{display:flex;align-items:center;gap:10px}
-.tool-button{width:32px;height:32px;padding:0;border-color:rgba(115,142,196,.28);background:rgba(38,52,84,.92);color:#b8c8ef;box-shadow:0 1px 2px rgba(0,0,0,.18)}
-.tool-button:hover{border-color:rgba(114,156,255,.52);background:rgba(48,69,112,.95);color:#d7e2ff}
-.stop-portal-button{border-color:rgba(227,77,89,.38);background:rgba(227,77,89,.12);color:#ff9aa3}
-.stop-portal-button:hover{border-color:rgba(255,154,163,.62);background:rgba(227,77,89,.2);color:#ffd1d5}
-.summary-row{display:flex;align-items:center;gap:10px}
-.summary-pill{display:flex;align-items:center;gap:6px;height:24px;min-width:auto;padding:0 10px;border-left:2px solid #6d96ff;background:rgba(255,255,255,.08);white-space:nowrap}
-.summary-pill strong{font-size:16px;line-height:1}
-.summary-pill span{color:#c2ccdd;font-size:12px;line-height:1}
-.summary-pill.is-running strong{color:#43d6a0}
-.summary-pill.is-registered strong{color:#8fb2ff}
-.infra-items{display:flex;align-items:center;gap:10px}
-.infra-item{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:10px;height:58px;padding:12px 16px;background:rgba(255,255,255,.075);border:1px solid rgba(255,255,255,.08)}
-.infra-item{flex:1 1 250px}
-.infra-item strong,.infra-item small{display:block}
-.infra-item strong{font-size:13px;white-space:nowrap}
-.infra-item small{margin-top:2px;color:#aeb9cc;font-size:12px;white-space:nowrap}
-.infra-summary{flex:0 0 max-content;flex-direction:column;align-items:flex-start;justify-content:center;gap:10px;width:max-content;min-width:0;height:58px;margin-right:0;padding:0;background:transparent;border:0}
-.infra-tag{height:24px;padding:0 10px;border:0;font-weight:650;font-size:12px;line-height:24px}
-.infra-tag.is-ready{background:rgba(30,185,129,.16);color:#43d6a0}
-.infra-tag.is-muted{background:rgba(139,151,175,.16);color:#a9b5c9}
-.status-dot{width:10px;height:10px;border-radius:50%;background:#6f7b8f;box-shadow:0 0 0 4px rgba(111,123,143,.16)}
-.status-dot.is-up{background:#22c98b;box-shadow:0 0 0 4px rgba(34,201,139,.15)}
-.source-alert{width:calc(100% - 96px);max-width:1680px;margin:0 auto 12px}
-.system-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:15px;width:calc(100% - 96px);max-width:1680px;margin:0 auto}
-.system-card{display:flex;flex-direction:column;min-height:300px;padding:18px;border:1px solid #dfe5ef;border-top:3px solid #c8d0dc;background:#fff;box-shadow:0 4px 18px rgba(33,52,85,.055);transition:.18s ease}
-.system-card.status-healthy{border-top:3px solid #20b982}
-.system-card.status-external{border-top:3px solid #e6a23c}
-.system-card.status-conflict,.system-card.status-exited{border-top:3px solid #e34d59}
-.system-card:hover{border-right-color:#b9caeb;border-bottom-color:#b9caeb;border-left-color:#b9caeb;box-shadow:0 12px 28px rgba(33,52,85,.1)}
-.status-starting{color:#2e62d5}
-.card-topline,.system-title{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
-.system-title{justify-content:flex-start;min-width:0}
-.system-index{display:grid;flex:0 0 auto;place-items:center;width:36px;height:28px;background:#edf3ff;color:#2e62d5;font-weight:800;font-variant-numeric:tabular-nums}
-.system-title h3{margin:0;font-size:17px;line-height:1.45}
-.system-title h3{display:-webkit-box;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:2}
-.version-switch{display:inline-flex;align-self:center;gap:2px;margin-top:12px;padding:3px;border:1px solid #d8e1ef;border-radius:999px;background:#f7f9fc}
-.version-switch button{width:58px;height:26px;padding:0;border:0;border-radius:999px;background:transparent;color:#66758d;font:600 11px/1 Inter,"Microsoft YaHei",sans-serif;cursor:pointer}
-.version-switch button.active{background:#2e62d5;color:#fff;box-shadow:0 1px 2px rgba(25,55,120,.2)}
-.version-switch button:focus-visible{outline:2px solid #7ba0ef;outline-offset:1px}
-.tag-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:8px}
-.tag-row span{padding:3px 9px;border-radius:999px;background:#f1f4f9;color:#526078;font-size:11px;line-height:1.5}
-.tag-row .platform-tag{display:grid;place-items:center;width:24px;height:24px;padding:0;background:#e9f2ff;color:#2e62d5;border:1px solid #d8e6ff}
-.tag-row .platform-tag :deep(svg){width:15px;height:15px}
-.status-stack{display:flex;flex:0 0 auto;flex-direction:column;align-items:flex-end;gap:6px}
-.lifecycle{white-space:nowrap;padding:4px 7px;font-size:11px}
-.lifecycle.legacy{background:#fff2dc;color:#a86500}
-.lifecycle.replacement{background:#e9f8f2;color:#087e56}
-.description{display:-webkit-box;min-height:58px;margin:14px 0;color:#58677e;font-size:12px;line-height:1.6;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:3}
-.access-row{display:flex;flex-direction:column;align-items:stretch;gap:6px;margin-top:auto;padding:9px 10px;background:#f6f8fc;border:1px solid #edf1f7;font-size:12px}
-.access-row a{min-width:0;color:#2e62d5;font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.access-placeholder{min-width:0;color:#a1acbd;font-size:12px;font-style:normal;font-weight:400;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.access-list{display:flex;flex-direction:column;gap:7px;min-width:0}
-.access-group{display:grid;grid-template-columns:58px minmax(0,1fr);align-items:start;gap:6px;min-width:0}
-.access-type{display:inline-flex;align-items:center;gap:4px;height:22px;color:#6b7a91;white-space:nowrap}
-.access-type em{font-style:normal;font-size:11px;line-height:1}
-.access-type :deep(svg){width:14px;height:14px}
-.access-links{display:flex;flex-direction:column;gap:4px;min-width:0}
-.access-item{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:6px;min-width:0}
-.copy-button{width:28px;padding:0;color:#6b7a91}
-.card-actions{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:12px;padding-top:12px;border-top:1px solid #e8edf5}
-.primary-actions{display:flex;align-items:center;justify-content:flex-end;gap:6px;min-width:0}
-.card-actions :deep(.t-button){flex:0 0 auto;min-width:0;padding-left:8px;padding-right:8px}
-.card-actions :deep(.t-button__text){overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.log-button{padding-left:0}
-.log-button :deep(.t-button__text){display:flex;align-items:center;gap:4px}
-.hint{margin:9px 0 0;padding:7px 9px;background:#fff7e9;color:#936319;font-size:11px;line-height:1.5}
-.hint.danger{background:#fff0f1;color:#ad2634}
-.detail-view p{margin:0 0 12px;color:#58677e;font-size:13px;line-height:1.65}
-.detail-list{margin:0}
-.detail-list div{display:grid;grid-template-columns:86px 1fr;gap:12px;padding:8px 0;border-bottom:1px dashed #e7ebf2;font-size:12px}
-.detail-list dt{color:#8791a3}
-.detail-list dd{margin:0;color:#344158;line-height:1.55;word-break:break-word}
-.order-dialog{display:flex;flex-direction:column;gap:8px}
-.order-item{display:grid;grid-template-columns:24px 32px 1fr;align-items:center;gap:12px;padding:10px 12px;border:1px solid #e2e8f2;background:#f8fafd;cursor:grab;transition:.12s ease}
-.order-item.is-dragging{border-color:#7ba0ef;background:#edf3ff;opacity:.72}
-.drag-handle{color:#8791a3;font-weight:800;letter-spacing:-2px;cursor:grab;user-select:none}
-.order-index{display:grid;place-items:center;width:28px;height:28px;background:#edf3ff;color:#2e62d5;font-weight:800}
-.order-item strong,.order-item small{display:block}
-.order-item strong{font-size:13px;line-height:1.45}
-.order-item small{margin-top:3px;color:#7a869a;font-size:12px}
-.order-footer{display:flex;justify-content:flex-end;gap:8px;padding-top:10px}
-.stop-confirm{display:grid;grid-template-columns:auto minmax(0,1fr);gap:14px;align-items:flex-start}
-.stop-confirm-icon{display:grid;place-items:center;width:40px;height:40px;border-radius:8px;background:#fff0f1;color:#d54941;font-size:22px}
-.stop-confirm h4{margin:0 0 6px;color:#172033;font-size:15px;line-height:1.45}
-.stop-confirm p{margin:0;color:#58677e;font-size:13px;line-height:1.7}
-.dialog-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:18px;padding-top:14px;border-top:1px solid #edf1f7}
-.ops-help{max-height:calc(100vh - 190px);overflow:auto;color:#344158;font-size:13px;line-height:1.7}
-.ops-help p{margin:0 0 12px;color:#58677e}
-.ops-help section{padding:12px 0;border-top:1px solid #edf1f7}
-.ops-help h4{display:flex;align-items:center;gap:6px;margin:0 0 8px;color:#172033;font-size:14px}
-.ops-help ol{margin:0 0 10px;padding-left:20px}
-.ops-help li{margin:3px 0}
-.command-box{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:10px;margin:0 0 8px}
-.command-box pre{margin:0;padding:10px 12px;overflow:auto;border-radius:6px;background:#111827;color:#dbe6f6;font:12px/1.6 Consolas,monospace}
-.command-box :deep(.t-button__text){display:flex;align-items:center;gap:4px}
-.ops-help kbd{padding:1px 5px;border:1px solid #cfd7e6;border-bottom-width:2px;border-radius:4px;background:#f8fafd;color:#172033;font:11px Consolas,monospace}
-.portal-footer{width:calc(100% - 96px);max-width:1680px;margin:18px auto 0;color:#8a95a8;font-size:12px;text-align:center}
-.log-view{max-height:480px;margin:0;padding:15px;overflow:auto;background:#111827;color:#dbe6f6;font:12px/1.6 Consolas,monospace;white-space:pre-wrap;word-break:break-all}
-@media(max-width:1380px){.system-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
-@media(max-width:1180px){.top-main{grid-template-columns:1fr}.top-tools{grid-template-columns:1fr auto}.system-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:760px){.top-tools{grid-template-columns:1fr}.infra-items{grid-template-columns:1fr}.title-line{flex-wrap:wrap}.top-panel>*,.system-grid,.portal-footer{width:calc(100% - 32px)}.system-grid{grid-template-columns:1fr}.hero-actions{justify-content:flex-start}.access-row{grid-template-columns:1fr}.access-row a,.access-row strong{white-space:normal}.card-actions{align-items:flex-start;flex-direction:column}.primary-actions{flex-wrap:wrap;justify-content:flex-start}.detail-list div{grid-template-columns:1fr;gap:4px}.order-item{grid-template-columns:24px 28px 1fr}.command-box{grid-template-columns:1fr}.command-box :deep(.t-button){justify-self:start}.ops-help{max-height:calc(100vh - 140px)}}
-</style>
+<!-- ================================================================ -->
+<style scoped src="./App.css"></style>

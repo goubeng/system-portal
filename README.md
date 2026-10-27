@@ -1,80 +1,27 @@
-# 本机综合系统门户
+# 系统调度枢纽（System Scheduler Nexus）
 
-门户地址固定为 `http://127.0.0.1:8484`，用于本机演示时统一查看、启动、停止和打开多个项目。
+系统调度枢纽地址固定为 `http://127.0.0.1:8484`，统一查看、启动、停止和打开多个业务系统。
 
-## 启动
+## 核心特性
 
-双击 `start-portal.ps1`，或在 PowerShell 中执行：
+- **数据源双重保障**：优先直读 NocoDB Base `pe5vi3rnz9eeems` 数据表 `pm_projects`；数据库未就绪时自动优雅回退到本地 `config/projects.json` 缓存。
+- **卡片精细化呈现**：支持端分类（PC / 移动端）、纯数字端口、底层数据库规格（PostgreSQL 14 / 无数据库）及纯净技术栈标签。
+- **进程生命周期管控**：支持单项目启停及全局一键“停止所有系统服务”（采用与顶部操作按钮对齐的 28px/11px 胶囊药丸风格）。
+- **样式与主文件解耦**：页面样式独立归档至 `src/App.css`，结构清晰规范。
+
+## 运行与操作
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\start-portal.ps1
+# 启动平台
+powershell -NoProfile -ExecutionPolicy Bypass -File .\start.ps1
+
+# 停止平台
+powershell -NoProfile -ExecutionPolicy Bypass -File .\stop.ps1
 ```
 
-停止门户及本次由门户启动的项目：
+## 数据库读取配置（NocoDB / pe5vi3rnz9eeems）
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\stop-portal.ps1
-```
-
-## 卡片来源：数据库
-
-门户的系统卡片直接读取「AI-PM 协同控制台」数据库里的 `pm_projects` 表（不再手工维护 `config/projects.json`；数据库读取失败时沿用上一次的卡片，并在页面上提示原因）。
-
-### 读取的字段（与协同控制台 `DATABASE-SCHEMA-AND-DATA.md` 中 `pm_projects` 一致）
-
-门户和协同控制台读写同一张表，没有另建表或另存一份卡片数据：
-
-| 表字段 | 门户用途 |
-| :--- | :--- |
-| `id` / `code` / `name` / `short_name` / `description` | 卡片标识、名称、简介 |
-| `kind` | 只显示 `npm`、`static`；`node`、`docker` 等基础设施记录不显示 |
-| `directory_path` | 项目目录（必须在门户允许的工作区内） |
-| `web_port` / `api_port` / `fixed_ports` | 启动、探活与访问端口 |
-| `entry` / `mobile_entry` / `health_path` | 入口页与健康检查路径 |
-| `tech_stack` / `architecture` / `implementation` / `dependencies` | 卡片详情 |
-| `group_id` / `version_label` | 新旧版本分组与切换（标签含“新”/“旧”） |
-| `build_config.portal` | 门户专用设置：`enabled`（是否显示）、`lan`（局域网访问）、`autoInstall`、`healthType`、`healthMarker`。协同控制台重新生成项目时会保留这一段 |
-
-门户自己需要的额外数据都放进 `build_config.portal`（同一张表、同一字段），不改表结构，因此不会影响协同控制台。
-显示顺序是门户页面上的个人偏好，仍保存在本地 `config/project-order.json`。
-某条记录没有显示出来时，页面顶部的数据来源提示会说明原因（例如“缺少 Web 端口”）。
-
-配置步骤：
-
-1. 复制 `config/data-source.example.json` 为 `config/data-source.json`（已加入 .gitignore，不会提交），填写 NocoDB 地址、API Token（与协同控制台「项目构建配置」里的全局 Session 相同）和 `pm_projects` 的表编号。
-2. 在协同控制台某项目的「自动化构建」页点击「登记到调度枢纽」，刷新门户页面即可看到该项目卡片，并可启动 / 停止；关闭「开通局域网访问」则只监听本机。
-3. 显示规则：`build_config.portal.enabled` 为 true 的项目显示；没有任何构建配置的历史项目，只要有本地路径、类型 npm/static 和 Web 端口也显示；`portal.enabled` 为 false 隐藏。项目目录必须位于门户允许的工作区内，否则跳过并给出提示。
-4. 启动 npm 项目时，缺少 `node_modules` 会先自动安装依赖；局域网开启时前端监听 0.0.0.0（接口仍只监听本机，经前端代理转发）。
-
-## 端口编号
-
-- 门户：`8484`
-- 01：`3101-3110`
-- 02：`3201-3210`
-- 03：`3301-3310`
-- 04：`3401-3410`
-- 05：`3501-3510`
-- 06：`3601-3610`
-- 07：`3701-3710`
-- 08：`3801-3810`
-- 09：`3901-3910`
-
-每个项目保留 10 个端口。全栈项目按 Web/API 两个端口成对使用，例如 06 首选 `3601/3602`，冲突时依次尝试 `3603/3604`。
-
-新增第 10 个项目时使用 `4001-4010`，并在 `config/projects.json` 增加一项；请求参数只允许传项目编号，不能通过页面提交任意命令或目录。
-
-## 环境说明
-
-- 原生静态项目由门户自带的 Node 静态服务托管，不需要安装依赖。
-- 01、02、05 也可分别进入各自项目目录执行 `npm run dev` 独立运行；综合门户不是它们的必需依赖。
-- Vue 项目必须保留各自 `node_modules`；如果卡片提示依赖不存在，请进入对应项目执行 `npm ci`。
-- Docker Desktop 由门户监测运行状态，应用启动仍由门户按白名单项目执行。
-- 门户不会自动建库、删库、迁移数据库，也不会停止并非由当前门户启动的进程。
-- NocoDB 8080 和 PostgreSQL 5432 是共享基础环境，状态会显示在页面顶部。
-
-## 安全边界
-
-- 门户监听本机和局域网地址，但 Host 仅允许本机与检测到的内网 IP；不要暴露到公网。
-- 项目路径、命令和端口全部来自服务端白名单。
-- 没有任意 PowerShell、命令行、路径或 PID 输入入口。
-- 只能停止当前门户实例亲自启动并持有句柄的项目进程。
+平台通过 `config/data-source.json` 连接数据中台：
+- **Base ID**: `pe5vi3rnz9eeems` (AI协作控制台)
+- **Table ID**: `mm7rs1k66dyq9i1` (pm_projects)
+- 对应字段完整映射：`code` -> id, `name`, `short_name`, `web_port`, `api_port`, `database_name`, `tech_stack`, `relative_path`, `group_id`, `version_label` 等。

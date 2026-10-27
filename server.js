@@ -7,6 +7,17 @@ const path=require('path')
 const {execFile,spawn}=require('child_process')
 const {readSourceConfig,loadCards}=require('./lib/card-source')
 
+function getLanIPs(){
+  const result=[]
+  const interfaces=os.networkInterfaces()
+  for(const name of Object.keys(interfaces)){
+    for(const item of interfaces[name]){
+      if(item.family==='IPv4' && !item.internal && item.address!=='127.0.0.1')result.push(item.address)
+    }
+  }
+  return result
+}
+
 const root=__dirname
 const workspaceRoot=path.resolve(root,'..')
 const projectRoots=[workspaceRoot,path.resolve(workspaceRoot,'..','..','协作文档')]
@@ -15,15 +26,17 @@ const runtimeRoot=path.join(root,'runtime')
 const logRoot=path.join(runtimeRoot,'logs')
 const projectConfigPath=path.join(root,'config','projects.json')
 const projectOrderPath=path.join(root,'config','project-order.json')
-const portalHost='0.0.0.0'
+const portalHost='127.0.0.1'
 const portalPort=8484
 const csrfToken=crypto.randomBytes(24).toString('hex')
 const managed=new Map()
 const logs=new Map()
 const lastExit=new Map()
 const locks=new Set()
+let restartPending=false
 
 fs.mkdirSync(logRoot,{recursive:true})
+
 // 卡片来源：优先读取 AI-PM 协同控制台数据库的 pm_projects 表；数据库不可用时回退到 config/projects.json（只读备份）
 const sourceConfig=readSourceConfig(root)
 const cardSource={name:'file',error:sourceConfig.configured?null:'未配置数据库访问凭据，使用本地配置文件',warnings:[],refreshedAt:null}
@@ -76,6 +89,7 @@ function isInsideRoot(target,projectRoot){
   const relative=path.relative(projectRoot,target)
   return relative==='' || (!!relative && !relative.startsWith('..') && !path.isAbsolute(relative))
 }
+
 
 const mime={'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'application/javascript; charset=utf-8','.json':'application/json; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.ico':'image/x-icon','.woff2':'font/woff2'}
 const securityHeaders={
@@ -205,10 +219,12 @@ async function probeProject(project,ports){
   const response=await requestUrl(healthUrl(project,ports))
   if(!response.ok)return false
   if(project.healthType==='json-ok'){
-    try{return JSON.parse(response.body).ok===true}catch{return false}
+    try{
+      const health=JSON.parse(response.body)
+      return health.ok===true && (!project.healthRepository || health.data?.repository===project.healthRepository)
+    }catch{return false}
   }
-  if(!project.healthMarker)return true
-  return response.body.includes(project.healthMarker)
+return typeof project.healthMarker==='string' && project.healthMarker ? response.body.includes(project.healthMarker) : true
 }
 
 async function findExternal(project){
@@ -227,7 +243,8 @@ async function choosePorts(project){
     if(ports.apiPort && !await canBind('127.0.0.1',ports.apiPort))continue
     return ports
   }
-  throw new Error(`端口槽位 ${project.webPort}-${project.webPort+9} 已全部占用`)
+  if(project.fixedPorts)throw new Error(`固定端口 ${project.webPort}${project.apiPort?` / ${project.apiPort}`:''} 无法绑定，请核对 Web/API 监听进程及 Windows 保留端口；本项目不支持自动换端口`)
+  throw new Error(`端口槽位 ${project.webPort}-${project.webPort+9} 无可用端口，请检查 Web/API 监听进程及 Windows 保留端口`)
 }
 
 async function projectStatus(project){
@@ -238,14 +255,14 @@ async function projectStatus(project){
     return {...publicProject(project),status:healthy?'healthy':alive?'starting':'exited',managed:alive,...shareUrls(project,current.ports),...publicUrls(project,current.ports),ports:current.ports,pid:alive?current.child.pid:null,lastExit:lastExit.get(project.id)||null}
   }
   const external=await findExternal(project)
-  if(external)return {...publicProject(project),status:'external',managed:false,...shareUrls(project,external),...publicUrls(project,external),ports:external,pid:null,lastExit:lastExit.get(project.id)||null}
+if(external)return {...publicProject(project),status:'external',managed:false,...shareUrls(project,external),...publicUrls(project,external),url:projectUrl(project,external),ports:external,pid:null,lastExit:lastExit.get(project.id)||null}
   const conflict=await Promise.all(candidatePorts(project).map(item=>isPortOpen(item.webPort)))
   return {...publicProject(project),status:conflict.some(Boolean)?'conflict':'stopped',managed:false,...shareUrls(project),url:null,networkUrl:null,networkUrls:[],mobileUrl:null,networkMobileUrl:null,networkMobileUrls:[],ports:null,pid:null,lastExit:lastExit.get(project.id)||null}
 }
 
 function publicProject(project){
   const {projectPath,relativePath,...safe}=project
-  return {...safe,folder:path.basename(projectPath),recommended:{webPort:project.webPort,apiPort:project.apiPort||null}}
+  return {...safe,folder:path.basename(projectPath),directory:projectPath,recommended:{webPort:project.webPort,apiPort:project.apiPort||null}}
 }
 
 function sameIdSet(ids){
@@ -325,6 +342,10 @@ async function startProject(project){
     const existing=await projectStatus(project)
     if(['healthy','external','starting'].includes(existing.status))return existing
     if(!fs.existsSync(project.projectPath))throw new Error('项目目录不存在')
+    if(project.requiresDocker){
+      const {docker}=await infrastructureStatus()
+      if(docker.desktopRunning===false)throw new Error('请先打开 Docker Desktop，再启动本项目')
+    }
     const ports=await choosePorts(project)
     const child=spawnProject(project,ports)
     const runtime={child,ports,startedAt:Date.now()}
@@ -334,7 +355,8 @@ async function startProject(project){
     try{await waitForHealthy(project,runtime,project.kind==='static'?10000:installing?300000:30000)}
     catch(error){await stopRuntime(project.id,runtime);throw error}
     return projectStatus(project)
-  }finally{locks.delete(project.id)}
+  }catch(error){appendLog(project.id,'error',error.message);throw error}
+  finally{locks.delete(project.id)}
 }
 
 function execFileResult(file,args,options={}){
@@ -380,15 +402,20 @@ const dockerCli='C:\\Program Files\\Docker\\Docker\\resources\\bin\\docker.exe'
 async function infrastructureStatus(){
   const installed=fs.existsSync(dockerDesktop)&&fs.existsSync(dockerCli)
   const docker=installed ? await execFileResult(dockerCli,['info','--format','{{.ServerVersion}}'],{timeout:3500}) : {ok:false,stdout:''}
-  return {docker:{installed,running:docker.ok,version:docker.ok?docker.stdout.trim():null},nocodb:{running:await isPortOpen(8080),port:8080},postgres:{running:await isPortOpen(5432),port:5432}}
+  const desktop=docker.ok?null:await execFileResult('tasklist.exe',['/FI','IMAGENAME eq Docker Desktop.exe','/FO','CSV','/NH'],{windowsHide:true,timeout:3500})
+  const desktopRunning=docker.ok?true:desktop.ok?/^"Docker Desktop\.exe",/im.test(desktop.stdout):null
+  const desktopDetail=desktopRunning!==null?null:desktop.error?.killed?'Docker Desktop 进程检测超时':sanitizeLine(desktop.stderr?.trim()||desktop.error?.message||'无法检测 Docker Desktop 进程')
+  const status=!installed?'not-installed':docker.ok?'running':docker.error?.killed?'timeout':'unavailable'
+  const detail=docker.ok||!installed?null:docker.error?.killed?'Docker 引擎未在 3.5 秒内响应':sanitizeLine(docker.stderr?.trim()||docker.error?.message||'Docker 引擎连接失败')
+  return {docker:{installed,running:docker.ok,desktopRunning,desktopDetail,starting:false,status,detail,version:docker.ok?docker.stdout.trim():null},nocodb:{running:await isPortOpen(8080),port:8080},postgres:{running:await isPortOpen(5432),port:5432}}
 }
 
 async function startDocker(){
-  if(!fs.existsSync(dockerDesktop))throw new Error('未找到 Docker Desktop')
   const current=await infrastructureStatus()
-  if(current.docker.running)return current
+  if(current.docker.desktopRunning || current.docker.running)return current
+  if(!fs.existsSync(dockerDesktop))throw new Error('未找到 Docker Desktop')
   spawn(dockerDesktop,[],{detached:true,stdio:'ignore',windowsHide:false}).unref()
-  return {docker:{installed:true,running:false,starting:true},nocodb:current.nocodb,postgres:current.postgres}
+  return {...current,docker:{...current.docker,starting:true}}
 }
 
 function allowedHost(req){
@@ -402,14 +429,15 @@ function authorizedMutation(req){
 }
 
 async function apiHandler(req,res,url){
+  if(req.method==='GET' && url.pathname==='/api/network-info')return send(res,200,{ips:getLanIPs()})
   if(req.method==='GET' && url.pathname==='/api/bootstrap'){
     await refreshProjects(true)
     const statuses=await Promise.all(projects.map(projectStatus))
-    return send(res,200,{token:csrfToken,projects:statuses,source:sourceInfo(),infrastructure:await infrastructureStatus(),portal:{host:portalHost,port:portalPort,...portalUrls()}})
+return send(res,200,{token:csrfToken,projects:statuses,source:sourceInfo(),infrastructure:await infrastructureStatus(),portal:{host:portalHost,port:portalPort,...portalUrls()},lanIPs:getLanIPs()})
   }
-  if(req.method==='GET' && url.pathname==='/api/status'){
+    if(req.method==='GET' && url.pathname==='/api/status'){
     await refreshProjects()
-    return send(res,200,{projects:await Promise.all(projects.map(projectStatus)),source:sourceInfo(),infrastructure:await infrastructureStatus()})
+    return send(res,200,{projects:await Promise.all(projects.map(projectStatus)),source:sourceInfo(),infrastructure:await infrastructureStatus(),lanIPs:getLanIPs()})
   }
   const logMatch=url.pathname.match(/^\/api\/projects\/([\w.-]+)\/logs$/)
   if(req.method==='GET' && logMatch){
@@ -418,20 +446,11 @@ async function apiHandler(req,res,url){
     return send(res,200,{lines:(logs.get(logMatch[1])||[]).slice(-tail)})
   }
   if(req.method==='POST' && !authorizedMutation(req))return send(res,403,{message:'请求校验失败，请刷新门户后重试'})
-  if(req.method==='POST' && url.pathname==='/api/projects/order'){
+if(req.method==='POST' && url.pathname==='/api/projects/order'){
     const body=await readJsonBody(req)
     await refreshProjects(true)
     reorderProjects(body.ids)
     return send(res,200,{projects:await Promise.all(projects.map(projectStatus))})
-  }
-  if(req.method==='POST' && url.pathname==='/api/projects/stop-all'){
-    const stopped=await stopManagedProjects()
-    return send(res,200,{stopped,projects:await Promise.all(projects.map(projectStatus))})
-  }
-  if(req.method==='POST' && url.pathname==='/api/portal/stop'){
-    send(res,200,{message:'综合门户服务正在停止'})
-    setTimeout(()=>shutdown(),120).unref()
-    return
   }
   const actionMatch=url.pathname.match(/^\/api\/projects\/([\w.-]+)\/(start|stop)$/)
   if(req.method==='POST' && actionMatch){
@@ -442,6 +461,37 @@ async function apiHandler(req,res,url){
     return send(res,200,{project:result})
   }
   if(req.method==='POST' && url.pathname==='/api/infrastructure/docker/start')return send(res,200,{infrastructure:await startDocker()})
+  if(req.method==='POST' && url.pathname==='/api/restart') {
+    if(restartPending)return send(res,409,{message:'平台正在重启，请勿重复操作'})
+    restartPending=true
+    try {
+      const helper=path.join(root,'lib','restart-portal.js')
+      const viteCli=path.join(root,'node_modules','vite','bin','vite.js')
+      if(!fs.existsSync(helper))throw new Error('重启程序缺失，请重新拉取 main 分支代码')
+      if(!fs.existsSync(viteCli))throw new Error('缺少 Vite 依赖，请先在项目目录执行 npm ci')
+      // Build before stopping the old server. A failed build must not shut it down.
+      const build=await execFileResult(process.execPath,[viteCli,'build'],{
+        cwd:root,timeout:120000,maxBuffer:4*1024*1024
+      })
+      if(!build.ok)throw new Error('前端构建失败：'+sanitizeLine(build.stderr||build.stdout||build.error?.message||'未知错误').slice(-600))
+      await new Promise((resolve,reject)=>{
+        const child=spawn(process.execPath,[helper],{cwd:root,detached:true,windowsHide:true,stdio:'ignore'})
+        child.once('error',reject)
+        child.once('spawn',()=>{child.unref();resolve()})
+      })
+      send(res,202,{message:'系统集指挥调度枢纽正在重启',previousPid:process.pid})
+      setTimeout(()=>process.exit(0),1000)
+    }catch(error){
+      restartPending=false
+      return send(res,500,{message:'重启准备失败：'+sanitizeLine(error.message)})
+    }
+    return
+  }
+  if(req.method==='POST' && url.pathname==='/api/exit') {
+    send(res, 200, { message: '系统集指挥调度枢纽已退出' })
+    setTimeout(() => process.exit(0), 1000)
+    return
+  }
   return send(res,404,{message:'接口不存在'})
 }
 
