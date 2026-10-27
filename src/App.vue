@@ -260,84 +260,137 @@
       </div>
     </t-dialog>
 
-    <!-- ====== 帮助弹窗：如何停止服务进程（含外部运行关闭指南） ====== -->
-    <t-dialog v-model:visible="helpDialogVisible" header="如何停止服务进程（含外部运行关闭指南）" placement="center" width="min(1000px, 96vw)" :footer="false">
-      <div class="help-content">
-        <!-- 模块一：受管服务停止方式 -->
-        <div class="help-section">
-          <h4>一、当前门户启动的服务（受管服务）</h4>
-          <p>由本调度平台拉起的业务系统，直接在界面即可一键停止：</p>
-          <ul class="help-list">
-            <li><b>停止单个系统</b>：点击该系统卡片右下角的红色 <code>停止服务</code> 按钮；</li>
-            <li><b>停止全部系统</b>：点击搜索框右侧的胶囊按钮 <code>停止所有系统服务</code>；</li>
-            <li><b>关闭调度平台</b>：点击页面右上角操作栏的 <code>关闭平台</code> 按钮。</li>
-          </ul>
-        </div>
-
-        <!-- 模块二：重点：外部运行服务停止 -->
-        <div class="help-section">
-          <h4>二、重点：显示为「外部运行」的进程如何停止？</h4>
-          <div class="help-tip-box warn">
-            <span class="tip-title"><info-circle-filled-icon class="tip-icon-warn" />为什么卡片显示「外部运行，无法强制停止」？</span>
-            <p>当服务是在 <b>外部终端（VS Code 终端、CMD、PowerShell）独立执行 npm run dev 启动</b>，或者<b>调度平台重启后与原进程脱钩</b>时，该进程属于操作系统独立进程。出于安全性，平台不能直接跨进程强制结束它。</p>
-          </div>
-
-          <h5 class="sub-title">停止外部运行进程的 3 种方式：</h5>
-          
-          <div class="help-step">
-            <div class="step-num">方法 1</div>
-            <div class="step-desc">
-              <b>回到原启动终端按快捷键停止（首选）：</b>
-              <p>切回当初运行该系统的 VS Code 终端标签页或命令行窗口，按下快捷键 <kbd>Ctrl</kbd> + <kbd>C</kbd>，然后输入 <code>y</code> 确认即可安全退出。</p>
+    <!-- ====== 帮助弹窗：服务进程停止与外部运行关闭指南 ====== -->
+    <t-dialog v-model:visible="helpDialogVisible" header="服务进程停止与外部运行关闭指南" placement="center" width="min(1240px, 96vw)" :footer="false">
+      <div class="help-dashboard">
+        <!-- 区域一：受管服务快速操作卡片（3列并排） -->
+        <div class="help-cards-grid">
+          <div class="quick-card">
+            <div class="qc-header">
+              <span class="qc-tag success">受管服务</span>
+              <span class="qc-title">单系统停止</span>
+            </div>
+            <p class="qc-desc">在卡片右下角点击红色按钮</p>
+            <div class="qc-action">
+              <span class="pill-badge danger">停止服务</span>
             </div>
           </div>
 
-          <div class="help-step">
-            <div class="step-num">方法 2</div>
-            <div class="step-desc">
-              <b>通过 PowerShell 精准按端口终止进程（推荐，最快）：</b>
-              <p>请在下方选择目标系统，系统将自动生成对应的专有终止命令：</p>
-              <div class="select-row">
-                <t-select v-model="helpProjectId" aria-label="排查项目" :options="projects.map(p => ({ label: p.name + ' (Web:' + (p.ports?.webPort || p.webPort) + (p.ports?.apiPort || p.apiPort ? ' / API:' + (p.ports?.apiPort || p.apiPort) : '') + ')', value: p.id }))" />
-              </div>
-              <div class="cmd-box">
-                <div class="cmd-header">
-                  <span><stop-circle-icon class="cmd-icon-danger" />终止占用该系统端口的进程命令：</span>
-                  <button class="cmd-copy-action" @click="copyText(killPortCommand)">复制终止命令</button>
-                </div>
-                <pre class="code-block">{{ killPortCommand }}</pre>
-              </div>
-              <div class="cmd-box">
-                <div class="cmd-header">
-                  <span><search-icon class="cmd-icon-info" />查看占用端口的详细 PID：</span>
-                  <button class="cmd-copy-action" @click="copyText(queryPortCommand)">复制代码</button>
-                </div>
-                <pre class="code-block">{{ queryPortCommand }}</pre>
-              </div>
+          <div class="quick-card">
+            <div class="qc-header">
+              <span class="qc-tag success">受管服务</span>
+              <span class="qc-title">全部系统停止</span>
+            </div>
+            <p class="qc-desc">在搜索工具栏右侧点击胶囊按钮</p>
+            <div class="qc-action">
+              <span class="pill-badge outline-danger">停止所有系统服务</span>
             </div>
           </div>
 
-          <div class="help-step">
-            <div class="step-num">方法 3</div>
-            <div class="step-desc">
-              <b>在 Windows 任务管理器中结束任务：</b>
-              <p>按快捷键 <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>Esc</kbd> 呼出任务管理器，切换至「详细信息」选项卡，找到对应的 <code>node.exe</code> 进程，右键选择「结束任务」。</p>
+          <div class="quick-card">
+            <div class="qc-header">
+              <span class="qc-tag neutral">平台总控</span>
+              <span class="qc-title">关闭调度平台</span>
+            </div>
+            <p class="qc-desc">在顶部深色导航栏右侧点击</p>
+            <div class="qc-action">
+              <span class="pill-badge dark">关闭平台</span>
             </div>
           </div>
         </div>
 
-        <!-- 模块三：全局清理兜底 -->
-        <div class="help-section">
-          <h4>三、终极兜底：一键清理所有残留的本地 Node 僵尸进程</h4>
-          <p>若遇到多个端口被未知历史终端占用、冲突且无法定位时，可在 PowerShell 执行以下全局清理指令：</p>
-          <div class="cmd-box">
-            <div class="cmd-header">
-              <span><error-circle-icon class="cmd-icon-danger" />一键结束所有本地 node.exe 进程（含本平台自身）：</span>
-              <button class="cmd-copy-action" @click="copyText(killAllNodeCommand)">复制清理指令</button>
+        <!-- 区域二：重点解决「外部运行」进程（左右双栏） -->
+        <div class="help-external-section">
+          <div class="section-title-bar">
+            <div class="st-left">
+              <span class="section-badge warn">核心指引</span>
+              <span class="section-heading">如何停止「外部运行」的独立进程？</span>
             </div>
-            <pre class="code-block">{{ killAllNodeCommand }}</pre>
+            <span class="st-desc">服务在外部终端启动或平台重启脱管，平台出于安全不会跨进程随意强杀</span>
           </div>
-          <p class="help-note"><lightbulb-icon class="note-icon-tip" />执行完毕后，进入平台目录重新运行 <code>.\start.ps1</code> 或 <code>npm run start</code> 即可拥有完全清爽的运行环境！</p>
+
+          <div class="external-cols-layout">
+            <!-- 左栏：快捷方式（终端 & 任务管理器） -->
+            <div class="col-left-methods">
+              <div class="method-box">
+                <div class="method-title">
+                  <span class="m-index">方法 1</span>
+                  <b>原启动终端快捷键（首选）</b>
+                </div>
+                <p class="m-text">切回运行该项目的 VS Code 终端或 CMD 窗口，按下组合键安全终止：</p>
+                <div class="kbd-guide">
+                  <kbd>Ctrl</kbd> + <kbd>C</kbd>
+                  <span class="kbd-sub">输入 <code>y</code> 确认退出</span>
+                </div>
+              </div>
+
+              <div class="method-box">
+                <div class="method-title">
+                  <span class="m-index">方法 3</span>
+                  <b>Windows 任务管理器</b>
+                </div>
+                <p class="m-text">呼出任务管理器，切换到「详细信息」页签，定位 <code>node.exe</code> 结束任务：</p>
+                <div class="kbd-guide">
+                  <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>Esc</kbd>
+                </div>
+              </div>
+            </div>
+
+            <!-- 右栏：PowerShell 精准端口查杀（交互式查杀命令） -->
+            <div class="col-right-interactive">
+              <div class="interactive-panel">
+                <div class="method-title">
+                  <span class="m-index primary">方法 2</span>
+                  <b>PowerShell 精准按端口查杀（推荐·最快速）</b>
+                </div>
+                <p class="panel-desc">选择要停止的目标系统，自动匹配其 Web / API 端口并生成专用终止命令：</p>
+
+                <div class="target-select-row">
+                  <t-select v-model="helpProjectId" aria-label="目标系统" :options="projects.map(p => ({ label: p.name + ' (Web: ' + (p.ports?.webPort || p.webPort) + (p.ports?.apiPort || p.apiPort ? ' / API: ' + (p.ports?.apiPort || p.apiPort) : '') + ')', value: p.id }))" />
+                </div>
+
+                <!-- 专有查杀命令 -->
+                <div class="terminal-cmd-block">
+                  <div class="t-cmd-bar">
+                    <span class="t-label danger"><stop-circle-icon class="cmd-icon-danger" />一键终止占用该系统端口的进程：</span>
+                    <button class="t-copy-btn" @click="copyText(killPortCommand)">复制终止命令</button>
+                  </div>
+                  <pre class="t-cmd-code">{{ killPortCommand }}</pre>
+                </div>
+
+                <!-- PID 查询命令 -->
+                <div class="terminal-cmd-block compact">
+                  <div class="t-cmd-bar">
+                    <span class="t-label"><search-icon class="cmd-icon-info" />查询占用端口的 PID 信息：</span>
+                    <button class="t-copy-btn" @click="copyText(queryPortCommand)">复制代码</button>
+                  </div>
+                  <pre class="t-cmd-code">{{ queryPortCommand }}</pre>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 区域三：终极兜底（全局残留清理） -->
+        <div class="help-bottom-fallback">
+          <div class="fallback-header">
+            <div class="fb-title">
+              <error-circle-icon class="cmd-icon-danger" />
+              <b>终极兜底：一键清理所有残留的本地 Node 僵尸进程</b>
+            </div>
+            <span class="fb-tag">端口冲突无法定位时使用</span>
+          </div>
+          <div class="terminal-cmd-block fallback-cmd">
+            <div class="t-cmd-bar">
+              <span class="t-label">结束本机所有本地 node.exe 进程（含本平台自身）：</span>
+              <button class="t-copy-btn highlight" @click="copyText(killAllNodeCommand)">复制全局清理指令</button>
+            </div>
+            <pre class="t-cmd-code">{{ killAllNodeCommand }}</pre>
+          </div>
+          <div class="fallback-footer">
+            <lightbulb-icon class="note-icon-tip" />
+            <span>清理完毕后，在项目目录重新双击 <code>start.ps1</code> 或运行 <code>npm run start</code> 即可拥有全新清爽环境！</span>
+          </div>
         </div>
       </div>
     </t-dialog>
