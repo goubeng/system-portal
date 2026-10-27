@@ -240,12 +240,12 @@
       </div>
     </t-dialog>
     <!-- ====== 日志弹窗 ====== -->
-    <t-dialog v-model:visible="logDialog.visible" :header="`${logDialog.name} · 运行日志`" width="900px" :footer="false">
+    <t-dialog v-model:visible="logDialog.visible" :header="`${logDialog.name} · 运行日志`" placement="center" width="min(980px, 96vw)" :footer="false">
       <pre class="log-pre">{{ logDialog.lines.length ? logDialog.lines.join('\n') : '暂无日志。项目可能尚未由本门户启动。' }}</pre>
     </t-dialog>
 
     <!-- ====== 详情弹窗 ====== -->
-    <t-dialog v-model:visible="detailDialog.visible" :header="`${detailDialog.item?.name || ''} · 项目详情`" width="640px" :footer="false">
+    <t-dialog v-model:visible="detailDialog.visible" :header="`${detailDialog.item?.name || ''} · 项目详情`" placement="center" width="min(720px, 96vw)" :footer="false">
       <div v-if="detailDialog.item" class="detail-body">
         <dl class="dl">
           <div><dt>编号</dt><dd>{{ detailDialog.item.id }}</dd></div>
@@ -261,7 +261,7 @@
     </t-dialog>
 
     <!-- ====== 帮助弹窗：如何停止服务进程（含外部运行关闭指南） ====== -->
-    <t-dialog v-model:visible="helpDialogVisible" header="如何停止服务进程（含外部运行关闭指南）" width="min(820px, 94vw)" :footer="false">
+    <t-dialog v-model:visible="helpDialogVisible" header="如何停止服务进程（含外部运行关闭指南）" placement="center" width="min(1000px, 96vw)" :footer="false">
       <div class="help-content">
         <!-- 模块一：受管服务停止方式 -->
         <div class="help-section">
