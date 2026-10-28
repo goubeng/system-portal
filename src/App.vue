@@ -216,7 +216,7 @@
           </div>
 
           <!-- 提示条 -->
-          <div v-if="item.status==='external'" class="card-hint warn">该服务不是由当前门户启动，无法强制停止。</div>
+          <div v-if="item.status==='external'" class="card-hint warn">该服务不是由当前门户启动；可点击顶部“停止所有系统服务”一并结束。</div>
           <div v-if="item.status==='conflict'" class="card-hint error">检测到 Web 或 API 端口有监听，但系统健康检查未通过。请查看日志与帮助。</div>
         </article>
       </section>
@@ -306,7 +306,7 @@
               <span class="section-badge warn">核心指引</span>
               <span class="section-heading">如何停止「外部运行」的独立进程？</span>
             </div>
-            <span class="st-desc">服务在外部终端启动或平台重启脱管，平台出于安全不会跨进程随意强杀</span>
+            <span class="st-desc">服务在外部终端启动或平台重启脱管；“停止所有系统服务”会按卡片登记端口（经健康检查确认）结束这些进程，也可手动处理</span>
           </div>
 
           <div class="external-cols-layout">
@@ -627,10 +627,13 @@ async function stopAll() {
   if (stoppingAll.value || exitingPortal.value || restartingPortal.value) return
   stoppingAll.value = true
   try {
-    for (const project of projects.value) {
-      if (project.managed) await projectAction(project, 'stop')
-    }
-  } finally { stoppingAll.value = false }
+    // 服务端停止所有运行中的系统：包括由本门户启动的，以及外部运行（非门户启动）的
+    const d = await api('/api/projects/stop-all', { method: 'POST', body: '{}' })
+    if (Array.isArray(d.projects)) projects.value = d.projects
+    const count = d.stopped?.length || 0
+    MessagePlugin.success(count ? `已停止 ${count} 个系统服务（其中外部运行 ${d.external?.length || 0} 个）` : '当前没有运行中的系统服务')
+  } catch (e) { MessagePlugin.error(e.message); await refreshStatus(true) }
+  finally { stoppingAll.value = false }
 }
 
 async function restartPortal() {

@@ -37,7 +37,7 @@ let restartPending=false
 
 fs.mkdirSync(logRoot,{recursive:true})
 
-// 卡片来源：优先读取 AI-PM 协同控制台数据库的 pm_projects 表；数据库不可用时回退到 config/projects.json（只读备份）
+// 卡片来源：优先读取 AI+PD 项目协同控制台数据库的 pm_projects 表；数据库不可用时回退到 config/projects.json（只读备份）
 const sourceConfig=readSourceConfig(root)
 const cardSource={name:'file',error:sourceConfig.configured?null:'未配置数据库访问凭据，使用本地配置文件',warnings:[],refreshedAt:null}
 let projects=loadFileProjects()
@@ -384,17 +384,96 @@ async function stopProject(project){
   finally{locks.delete(project.id)}
 }
 
+// 查找正在监听指定端口的进程 ID（Windows 用 netstat，Linux/macOS 用 ss / lsof）
+async function listeningPids(port){
+  const pids=new Set()
+  const add=value=>{const pid=Number(value);if(Number.isInteger(pid) && pid>4 && pid!==process.pid)pids.add(pid)}
+  if(process.platform==='win32'){
+    const result=await execFileResult('netstat.exe',['-ano','-p','tcp'],{timeout:8000,maxBuffer:8*1024*1024})
+    for(const line of String(result.stdout||'').split(/\r?\n/)){
+      const cols=line.trim().split(/\s+/)
+      if(cols.length>=5 && /^LISTENING$/i.test(cols[3]) && cols[1].endsWith(`:${port}`))add(cols[4])
+    }
+    return [...pids]
+  }
+  const ss=await execFileResult('ss',['-ltnpH',`sport = :${port}`],{timeout:5000})
+  if(ss.ok)for(const match of String(ss.stdout).matchAll(/pid=(\d+)/g))add(match[1])
+  if(!pids.size){
+    const lsof=await execFileResult('lsof',['-nP','-t',`-iTCP:${port}`,'-sTCP:LISTEN'],{timeout:5000})
+    for(const value of String(lsof.stdout||'').split(/\s+/).filter(Boolean))add(value)
+  }
+  return [...pids]
+}
+
+function pidAlive(pid){
+  try{process.kill(pid,0);return true}catch(error){return error.code==='EPERM'}
+}
+
+async function killPid(pid){
+  if(process.platform==='win32'){
+    await execFileResult('taskkill.exe',['/PID',String(pid),'/T','/F'],{timeout:8000})
+    return
+  }
+  // 若该进程是进程组组长（npm → node 一组），整组终止
+  const group=await execFileResult('ps',['-o','pgid=','-p',String(pid)],{timeout:3000})
+  const pgid=Number(String(group.stdout||'').trim())
+  const target=Number.isInteger(pgid) && pgid===pid && pgid!==process.pid ? -pid : pid
+  try{process.kill(target,'SIGTERM')}catch{}
+  await new Promise(resolve=>setTimeout(resolve,1200))
+  if(pidAlive(pid)){try{process.kill(target,'SIGKILL')}catch{}}
+}
+
+async function releasePorts(ports){
+  const killed=new Set()
+  for(const port of ports){
+    if(!port || port===portalPort)continue
+    for(const pid of await listeningPids(port)){
+      if(killed.has(pid))continue
+      killed.add(pid)
+      await killPid(pid)
+    }
+  }
+  return [...killed]
+}
+
+function projectPortList(ports){
+  return ports ? [ports.webPort,ports.apiPort].filter(Boolean) : []
+}
+
+// 停止所有系统服务：包括由门户启动的，以及在门户之外运行（外部运行）的
 async function stopManagedProjects(){
+  const result={managed:[],external:[],pids:[]}
+  const targets=new Map()
+  // 先识别外部运行的项目（以健康检查确认端口属于该系统，避免误杀无关程序）
+  await Promise.all(projects.filter(project=>!managed.has(project.id) && !locks.has(project.id)).map(async project=>{
+    const ports=await findExternal(project)
+    if(ports)targets.set(project.id,{project,ports})
+  }))
   const entries=[...managed.entries()].filter(([id])=>!locks.has(id))
+  for(const [id,runtime] of entries)targets.set(id,{project:projectMap.get(id),ports:runtime.ports,managed:true})
   await Promise.all(entries.map(async([id,runtime])=>{
     locks.add(id)
     try{
       await stopRuntime(id,runtime)
       managed.delete(id)
+      result.managed.push(id)
       appendLog(id,'portal','已通过头部操作停止服务')
     }finally{locks.delete(id)}
   }))
-  return entries.map(([id])=>id)
+  for(const [id,target] of targets){
+    if(locks.has(id))continue
+    locks.add(id)
+    try{
+      // 门户启动的项目已被终止，这里仅清理残留监听；外部运行的项目按端口结束进程
+      const pids=await releasePorts(projectPortList(target.ports))
+      result.pids.push(...pids)
+      if(!target.managed){
+        result.external.push(id)
+        appendLog(id,'portal',pids.length?`已结束外部运行的服务进程：${pids.join(', ')}`:'未找到外部运行的监听进程')
+      }
+    }finally{locks.delete(id)}
+  }
+  return result
 }
 
 const dockerDesktop='C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe'
@@ -446,7 +525,11 @@ return send(res,200,{token:csrfToken,projects:statuses,source:sourceInfo(),infra
     return send(res,200,{lines:(logs.get(logMatch[1])||[]).slice(-tail)})
   }
   if(req.method==='POST' && !authorizedMutation(req))return send(res,403,{message:'请求校验失败，请刷新门户后重试'})
-if(req.method==='POST' && url.pathname==='/api/projects/order'){
+if(req.method==='POST' && url.pathname==='/api/projects/stop-all'){
+    const result=await stopManagedProjects()
+    return send(res,200,{stopped:[...result.managed,...result.external],managed:result.managed,external:result.external,projects:await Promise.all(projects.map(projectStatus))})
+  }
+  if(req.method==='POST' && url.pathname==='/api/projects/order'){
     const body=await readJsonBody(req)
     await refreshProjects(true)
     reorderProjects(body.ids)
