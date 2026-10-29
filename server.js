@@ -40,7 +40,8 @@ fs.mkdirSync(logRoot,{recursive:true})
 // 卡片来源：优先读取 AI+PD 项目协同控制台数据库的 pm_projects 表；数据库不可用时回退到 config/projects.json（只读备份）
 const sourceConfig=readSourceConfig(root)
 const cardSource={name:'file',error:sourceConfig.configured?null:'未配置数据库访问凭据，使用本地配置文件',warnings:[],refreshedAt:null}
-let projects=loadFileProjects()
+const fileProjects=loadFileProjects()
+let projects=fileProjects
 let projectMap=new Map(projects.map(item=>[item.id,item]))
 let refreshPromise=null
 let lastRefresh=0
@@ -55,7 +56,18 @@ function loadFileProjects(){
   return sortProjects(items,readProjectOrder(items))
 }
 
-function applyProjects(items){
+// 数据库里没有登记的旧版/历史系统（config/projects.json 里有）继续保留在调度枢纽，保证旧版仍能启动；
+// 与数据库卡片 id 相同、同一分组的同一版本、或登记了同一 Web 端口的视为同一个系统，以数据库为准。
+function mergeFileProjects(dbItems){
+  const ids=new Set(dbItems.map(item=>item.id))
+  const versions=new Set(dbItems.filter(item=>item.groupId&&item.versionLabel).map(item=>`${item.groupId}/${item.versionLabel}`))
+  const ports=new Set(dbItems.map(item=>item.webPort))
+  const kept=fileProjects.filter(item=>!ids.has(item.id)&&!(item.groupId&&item.versionLabel&&versions.has(`${item.groupId}/${item.versionLabel}`))&&!ports.has(item.webPort))
+  return [...dbItems,...kept.map(item=>({...item,fromFile:true}))]
+}
+
+function applyProjects(rawItems){
+  const items=mergeFileProjects(rawItems)
   projects=sortProjects(items,readProjectOrder(items))
   projectMap=new Map(projects.map(item=>[item.id,item]))
 }
