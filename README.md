@@ -24,4 +24,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\stop.ps1
 平台通过 `config/data-source.json` 连接数据中台：
 - **Base ID**: `pe5vi3rnz9eeems` (AI协作控制台)
 - **Table ID**: `mm7rs1k66dyq9i1` (pm_projects)
-- 对应字段完整映射：`code` -> id, `name`, `short_name`, `web_port`, `api_port`, `database_name`, `tech_stack`, `relative_path`, `group_id`, `version_label` 等。
+- 对应字段完整映射：`code` -> id, `name`, `short_name`, `web_port`, `api_port`, `database_name`, `tech_stack`, `relative_path`, `description`（卡片标签下方的说明文字）, `group_id`, `version_label` 等。
+
+### 卡片说明文字
+- 卡片标签下方的说明读的是 `pm_projects.description`，在「AI+PD项目协同控制台」的「编辑项目档案」里填写“项目说明”。
+- 库里说明为空时，门户先用 `config/projects.json` 里同一系统（按 id、同名、同端口匹配）的说明顶上；库里填了就以库为准。
+- 一次性把 `projects.json` 的说明回填进数据库（只补空的）：`node scripts/sync-descriptions.mjs` 先预览，确认后加 `--apply` 写入。
+
+### 新旧版合并成一张卡片
+同一系统的新、旧版本在 `pm_projects` 里各一行，填写**相同的 `group_id`**（如 `venue`），`version_label` 分别填 `旧版` / `新版`：门户把它们合并为一张卡片，卡片上出现「旧版 / 新版」切换，默认显示新版；各版本端口、目录、技术栈、说明独立。只填 `version_label` 不填 `group_id`（或两行 `group_id` 不一致）不会合并，会各显示一张卡片。这两列在控制台「编辑项目档案」里填写。
+

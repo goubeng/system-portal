@@ -66,8 +66,20 @@ function mergeFileProjects(dbItems){
   return [...dbItems,...kept.map(item=>({...item,fromFile:true}))]
 }
 
+// 数据库里“项目说明”（pm_projects.description）为空时，先用 config/projects.json 里同一系统的说明顶上：
+// 按卡片 id、同名（有版本标签时同名同版本）、同 Web 端口依次匹配。数据库里填了说明就以数据库为准。
+function fillDescriptions(dbItems){
+  return dbItems.map(item=>{
+    if(item.description)return item
+    const match=fileProjects.find(file=>file.description&&file.id===item.id)
+      ||fileProjects.find(file=>file.description&&file.name===item.name&&(!item.versionLabel||!file.versionLabel||file.versionLabel===item.versionLabel))
+      ||fileProjects.find(file=>file.description&&file.webPort===item.webPort)
+    return match?{...item,description:match.description}:item
+  })
+}
+
 function applyProjects(rawItems){
-  const items=mergeFileProjects(rawItems)
+  const items=mergeFileProjects(fillDescriptions(rawItems))
   projects=sortProjects(items,readProjectOrder(items))
   projectMap=new Map(projects.map(item=>[item.id,item]))
 }
