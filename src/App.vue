@@ -87,9 +87,19 @@
             <template #prefix-icon><search-icon /></template>
           </t-input>
         </div>
-        <t-button class="stop-all-button" theme="danger" variant="outline" shape="round" :loading="stoppingAll" :disabled="exitingPortal || restartingPortal" @click="stopAll">
-          <template #icon><stop-circle-icon /></template>停止所有系统服务
-        </t-button>
+        <div class="toolbar-right-actions">
+          <t-button
+            class="toolbar-action-btn order-config-button"
+            variant="outline"
+            shape="round"
+            :disabled="exitingPortal || restartingPortal || !projects.length"
+            @click="openOrderDialog">
+            <template #icon><order-adjustment-column-icon /></template>调整顺序
+          </t-button>
+          <t-button class="toolbar-action-btn stop-all-button" theme="danger" variant="outline" shape="round" :loading="stoppingAll" :disabled="exitingPortal || restartingPortal" @click="stopAll">
+            <template #icon><stop-circle-icon /></template>停止所有系统服务
+          </t-button>
+        </div>
       </div>
       <div v-if="systemSearch.trim() && !displayProjects.length" class="system-search-empty-state">
         未找到匹配的系统，请更换关键词
@@ -265,6 +275,67 @@
         <t-button size="medium" theme="primary" @click="confirmRestart">确认重启</t-button>
       </div>
     </t-dialog>
+    <!-- ====== 调整卡片顺序弹窗 ====== -->
+    <t-dialog v-model:visible="orderDialog.visible" header="调整系统卡片显示顺序" placement="center" width="min(640px, 95vw)" :footer="false">
+      <div class="order-dialog-body">
+        <p class="order-dialog-tip">拖动行或点击右侧箭头调整展示顺序，同系统的旧版/新版会作为同一张合并卡片整体移动，保存后立即写入服务配置。</p>
+        <div class="order-list" role="list">
+          <div
+            v-for="(row, index) in orderDialog.items"
+            :key="row.key"
+            role="listitem"
+            class="order-item"
+            :class="{
+              'order-item--dragging': orderDialog.dragIndex === index,
+              'order-item--dragover': orderDialog.dragOverIndex === index && orderDialog.dragIndex !== index
+            }"
+            draggable="true"
+            @dragstart="onOrderDragStart(index, $event)"
+            @dragover="onOrderDragOver(index, $event)"
+            @drop="onOrderDrop(index)"
+            @dragend="onOrderDragEnd">
+            <span class="order-item-num">{{ String(index + 1).padStart(2, '0') }}</span>
+            <drag-move-icon class="order-drag-handle" />
+            <div class="order-item-main">
+              <div class="order-item-title-row">
+                <span class="order-item-name">{{ row.name }}</span>
+                <span v-if="row.isGroup" class="order-group-badge">含 {{ row.versionLabels.join(' / ') }}</span>
+              </div>
+              <div class="order-item-meta">
+                <span>ID：{{ row.memberIds.join(' / ') }}</span>
+                <span v-if="row.portText">端口：{{ row.portText }}</span>
+              </div>
+            </div>
+            <t-tag size="small" :theme="statusMeta(row.status).theme" variant="light">{{ statusMeta(row.status).label }}</t-tag>
+            <div class="order-item-actions" @click.stop>
+              <t-tooltip content="置顶">
+                <t-button variant="text" size="small" :disabled="index === 0 || orderDialog.saving" @click="moveOrderItem(index, 0)">
+                  <template #icon><chevron-up-double-icon /></template>
+                </t-button>
+              </t-tooltip>
+              <t-tooltip content="上移">
+                <t-button variant="text" size="small" :disabled="index === 0 || orderDialog.saving" @click="moveOrderItem(index, index - 1)">
+                  <template #icon><arrow-up-icon /></template>
+                </t-button>
+              </t-tooltip>
+              <t-tooltip content="下移">
+                <t-button variant="text" size="small" :disabled="index === orderDialog.items.length - 1 || orderDialog.saving" @click="moveOrderItem(index, index + 1)">
+                  <template #icon><arrow-down-icon /></template>
+                </t-button>
+              </t-tooltip>
+            </div>
+          </div>
+        </div>
+        <div class="order-dialog-foot">
+          <span class="order-dialog-summary">共 {{ orderDialog.items.length }} 张展示卡片（底层 {{ projects.length }} 个系统项）</span>
+          <div class="order-dialog-buttons">
+            <t-button variant="outline" :disabled="orderDialog.saving" @click="orderDialog.visible = false">取消</t-button>
+            <t-button theme="primary" :loading="orderDialog.saving" @click="saveOrder">保存顺序</t-button>
+          </div>
+        </div>
+      </div>
+    </t-dialog>
+
     <!-- ====== 日志弹窗 ====== -->
     <t-dialog v-model:visible="logDialog.visible" :header="`${logDialog.name} · 运行日志`" placement="center" width="min(980px, 96vw)" :footer="false">
       <pre class="log-pre">{{ logDialog.lines.length ? logDialog.lines.join('\n') : '暂无日志。项目可能尚未由本门户启动。' }}</pre>
@@ -430,7 +501,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } 
 import { MessagePlugin } from 'tdesign-vue-next'
 import outIcon from './out.svg'
 import restartIcon from './restart.svg'
-import { RefreshIcon, PlayIcon, StopCircleIcon, HelpCircleIcon, PoweroffIcon, SearchIcon, InfoCircleFilledIcon, ErrorCircleIcon, LightbulbIcon } from 'tdesign-icons-vue-next'
+import { RefreshIcon, PlayIcon, StopCircleIcon, HelpCircleIcon, PoweroffIcon, SearchIcon, InfoCircleFilledIcon, ErrorCircleIcon, LightbulbIcon, OrderAdjustmentColumnIcon, DragMoveIcon, ArrowUpIcon, ArrowDownIcon, ChevronUpDoubleIcon } from 'tdesign-icons-vue-next'
 
 const projects = ref([])
 const portalClosed = ref(false)
@@ -488,6 +559,7 @@ const refreshing = ref(false)
 const busyActions = reactive(new Map())
 const logDialog = reactive({ visible: false, name: '', lines: [] })
 const detailDialog = reactive({ visible: false, item: null })
+const orderDialog = reactive({ visible: false, items: [], saving: false, dragIndex: null, dragOverIndex: null })
 let timer
 let restartPollTimer
 
@@ -514,24 +586,33 @@ const dockerStatusDetail = computed(() => {
   return docker.running ? 'Docker Desktop 已启动，引擎可用。' : `Docker Desktop 已启动。${docker.detail || '引擎尚未就绪'}，无需重复打开。`
 })
 
-const displayProjects = computed(() => {
+/**
+ * 按 groupId 将后端原始项目列表归纳为展示卡片序列（保留原始顺序与每组全部底层 ID）。
+ */
+function groupProjectsForDisplay(list) {
   const groups = []
   const groupMap = new Map()
-  const filtering = Boolean(systemSearch.value.trim())
-  const matchedIds = filtering ? new Set(systemSearchMatches.value.map(project => project.id)) : null
-
-  projects.value.forEach(p => {
+  for (const p of list) {
     if (p.groupId) {
-      if (!groupMap.has(p.groupId)) {
-        const group = { isGroup: true, groupId: p.groupId, versions: {} }
+      let group = groupMap.get(p.groupId)
+      if (!group) {
+        group = { isGroup: true, groupId: p.groupId, versions: {}, memberIds: [] }
         groupMap.set(p.groupId, group)
         groups.push(group)
       }
-      groupMap.get(p.groupId).versions[p.versionLabel] = p
+      group.versions[p.versionLabel] = p
+      group.memberIds.push(p.id)
     } else {
-      groups.push({ isGroup: false, ...p })
+      groups.push({ isGroup: false, ...p, memberIds: [p.id] })
     }
-  })
+  }
+  return groups
+}
+
+const displayProjects = computed(() => {
+  const groups = groupProjectsForDisplay(projects.value)
+  const filtering = Boolean(systemSearch.value.trim())
+  const matchedIds = filtering ? new Set(systemSearchMatches.value.map(project => project.id)) : null
 
   return groups.map((g, index) => {
     if (g.isGroup) {
@@ -740,6 +821,117 @@ async function showLogs(item) {
 }
 
 function showDetail(item) { detailDialog.item = item; detailDialog.visible = true }
+
+function openOrderDialog() {
+  const groups = groupProjectsForDisplay(projects.value)
+  orderDialog.items = groups.map(g => {
+    if (g.isGroup) {
+      const versionLabels = Object.keys(g.versions).sort((a, b) => b.localeCompare(a))
+      const preferredLabel = activeVersions[g.groupId] || (g.versions['新版'] ? '新版' : versionLabels[0])
+      const rep = g.versions[preferredLabel] || g.versions[versionLabels[0]]
+      return {
+        key: `group:${g.groupId}`,
+        isGroup: true,
+        name: rep?.name || g.groupId,
+        versionLabels: versionLabels.filter(v => v && v !== 'undefined'),
+        memberIds: [...g.memberIds],
+        status: rep?.status || 'stopped',
+        portText: versionLabels
+          .map(v => {
+            const m = g.versions[v]
+            const p = m?.ports?.webPort || m?.recommended?.webPort
+            return p ? `${v}:${p}` : ''
+          })
+          .filter(Boolean)
+          .join(' / ')
+      }
+    }
+    const port = g.ports?.webPort || g.recommended?.webPort
+    const apiPort = g.ports?.apiPort || g.recommended?.apiPort
+    return {
+      key: `item:${g.id}`,
+      isGroup: false,
+      name: g.name,
+      versionLabels: [],
+      memberIds: [g.id],
+      status: g.status || 'stopped',
+      portText: port ? `${port}${apiPort ? '/' + apiPort : ''}` : ''
+    }
+  })
+  orderDialog.dragIndex = null
+  orderDialog.dragOverIndex = null
+  orderDialog.visible = true
+}
+
+function moveOrderItem(fromIndex, toIndex) {
+  if (fromIndex === toIndex || toIndex < 0 || toIndex >= orderDialog.items.length) return
+  const next = [...orderDialog.items]
+  const [moved] = next.splice(fromIndex, 1)
+  next.splice(toIndex, 0, moved)
+  orderDialog.items = next
+}
+
+function onOrderDragStart(index, event) {
+  orderDialog.dragIndex = index
+  orderDialog.dragOverIndex = index
+  if (event?.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', String(index))
+  }
+}
+
+function onOrderDragOver(index, event) {
+  event.preventDefault()
+  if (event?.dataTransfer) event.dataTransfer.dropEffect = 'move'
+  if (orderDialog.dragOverIndex !== index) orderDialog.dragOverIndex = index
+}
+
+function onOrderDrop(index) {
+  if (orderDialog.dragIndex !== null && orderDialog.dragIndex !== index) {
+    moveOrderItem(orderDialog.dragIndex, index)
+  }
+  orderDialog.dragIndex = null
+  orderDialog.dragOverIndex = null
+}
+
+function onOrderDragEnd() {
+  orderDialog.dragIndex = null
+  orderDialog.dragOverIndex = null
+}
+
+async function saveOrder() {
+  if (orderDialog.saving) return
+  orderDialog.saving = true
+  try {
+    // 将展示卡展开为后端所需的全量底层项目 ID，同时兜底补全弹窗打开期间新增的项目
+    const seen = new Set()
+    const currentIdSet = new Set(projects.value.map(p => p.id))
+    const ids = []
+    for (const row of orderDialog.items) {
+      for (const id of row.memberIds) {
+        if (currentIdSet.has(id) && !seen.has(id)) {
+          seen.add(id)
+          ids.push(id)
+        }
+      }
+    }
+    for (const p of projects.value) {
+      if (!seen.has(p.id)) {
+        seen.add(p.id)
+        ids.push(p.id)
+      }
+    }
+    const d = await api('/api/projects/order', { method: 'POST', body: JSON.stringify({ ids }) })
+    if (Array.isArray(d.projects)) projects.value = d.projects
+    orderDialog.visible = false
+    MessagePlugin.success('卡片显示顺序已保存')
+  } catch (e) {
+    MessagePlugin.error(`保存顺序失败：${e.message}`)
+    await refreshStatus(true)
+  } finally {
+    orderDialog.saving = false
+  }
+}
 
 function statusMeta(s) {
   return ({
