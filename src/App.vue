@@ -195,6 +195,14 @@
             </button>
             <div class="foot-actions" style="margin-left: auto;">
               <t-button
+                v-if="item.status!=='stopped'"
+                variant="outline" size="small"
+                :loading="busyId===item.id && busyAction==='restart'"
+                :disabled="busyId===item.id && busyAction!=='restart'"
+                @click="askRestart(item)">
+                重启服务
+              </t-button>
+              <t-button
                 v-if="['healthy','external','starting'].includes(item.status) && item.managed"
                 theme="danger" size="small"
                 :loading="busyId===item.id && busyAction==='stop'"
@@ -217,7 +225,7 @@
 
           <!-- 提示条 -->
           <div v-if="item.status==='external'" class="card-hint warn">该服务不是由当前门户启动；可点击顶部“停止所有系统服务”一并结束。</div>
-          <div v-if="item.status==='conflict'" class="card-hint error">检测到 Web 或 API 端口有监听，但系统健康检查未通过。请查看日志与帮助。</div>
+          <div v-if="item.status==='conflict'" class="card-hint error">检测到 Web 或 API 端口有监听，但系统健康检查未通过。可点“重启服务”释放该系统的端口并重新启动，也可查看日志与帮助。</div>
         </article>
       </section>
     </div>
@@ -237,6 +245,24 @@
       <div class="restart-confirm-actions">
         <t-button size="medium" variant="outline" @click="restartConfirmVisible = false">取消</t-button>
         <t-button size="medium" theme="primary" :loading="restartingPortal" @click="restartPortal">确认重启</t-button>
+      </div>
+    </t-dialog>
+    <!-- ====== 重启单个系统确认 ====== -->
+    <t-dialog v-model:visible="restartItemDialog.visible" :header="`重启服务 · ${restartItemDialog.item?.name || ''}`" placement="center" width="480px" :footer="false">
+      <div class="restart-confirm-message" v-if="restartItemDialog.item">
+        <p>将先停止该系统，并结束占用其登记端口（Web {{ restartItemDialog.item.recommended?.webPort }}<template v-if="restartItemDialog.item.recommended?.apiPort"> / API {{ restartItemDialog.item.recommended.apiPort }}</template>）的进程，然后重新启动。</p>
+        <div class="restart-confirm-warning" v-if="restartItemDialog.item.status==='conflict' || restartItemDialog.item.status==='external'">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+            <circle cx="12" cy="12" r="9" />
+            <path d="M12 7.5v5.5" />
+            <circle cx="12" cy="16.5" r="1" fill="currentColor" stroke="none" />
+          </svg>
+          <p>{{ restartItemDialog.item.status==='conflict' ? '这些端口上的程序没有通过该系统的健康检查，可能是遗留的旧进程，也可能是其他程序，确认后都会被结束。' : '该服务不是由本门户启动的，确认后会结束它并改由本门户重新启动。' }}</p>
+        </div>
+      </div>
+      <div class="restart-confirm-actions">
+        <t-button size="medium" variant="outline" @click="restartItemDialog.visible = false">取消</t-button>
+        <t-button size="medium" theme="primary" @click="confirmRestart">确认重启</t-button>
       </div>
     </t-dialog>
     <!-- ====== 日志弹窗 ====== -->
@@ -411,6 +437,7 @@ const portalClosed = ref(false)
 const exitingPortal = ref(false)
 const restartingPortal = ref(false)
 const restartConfirmVisible = ref(false)
+const restartItemDialog = reactive({ visible: false, item: null })
 const restartNotice = ref('')
 const stoppingAll = ref(false)
 const systemSearch = ref('')
@@ -618,9 +645,19 @@ async function projectAction(item, action) {
     const d = await api(`/api/projects/${item.id}/${action}`, { method: 'POST', body: '{}' })
     const i = projects.value.findIndex(p => p.id === item.id)
     if (i >= 0) projects.value[i] = d.project
-    MessagePlugin.success(action === 'start' ? '服务启动成功' : '服务已停止')
+    MessagePlugin.success(action === 'start' ? '服务启动成功' : action === 'restart' ? '服务已重启' : '服务已停止')
   } catch (e) { MessagePlugin.error(e.message); await refreshStatus(true) }
   finally { busyId.value = ''; busyAction.value = '' }
+}
+
+function askRestart(item) {
+  restartItemDialog.item = item
+  restartItemDialog.visible = true
+}
+async function confirmRestart() {
+  const item = restartItemDialog.item
+  restartItemDialog.visible = false
+  if (item) await projectAction(item, 'restart')
 }
 
 async function stopAll() {

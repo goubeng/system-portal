@@ -408,6 +408,30 @@ async function stopProject(project){
   finally{locks.delete(project.id)}
 }
 
+// 重启：先停掉本门户启动的进程，再释放该系统登记的 Web/API 端口（含外部运行或健康检查未通过的残留进程），最后重新启动。
+// 只释放“登记端口”和健康检查确认属于本系统的端口，不动备用槽位上的其他程序。
+async function restartProject(project){
+  if(locks.has(project.id))throw new Error('项目正在执行启动或停止操作')
+  locks.add(project.id)
+  try{
+    const runtime=managed.get(project.id)
+    const external=runtime?null:await findExternal(project)
+    const ports=new Set([project.webPort,project.apiPort,...projectPortList(runtime?.ports),...projectPortList(external)].filter(Boolean))
+    appendLog(project.id,'portal','收到重启请求，先释放端口 '+[...ports].join(', '))
+    if(runtime){await stopRuntime(project.id,runtime);managed.delete(project.id)}
+    // 等进程自行退出；仍在监听的端口再强制结束对应进程
+    for(let i=0;i<20;i++){
+      if(!(await Promise.all([...ports].map(isPortOpen))).some(Boolean))break
+      if(i===6){const pids=await releasePorts([...ports]);if(pids.length)appendLog(project.id,'portal','已结束占用端口的进程：'+pids.join(', '))}
+      await new Promise(resolve=>setTimeout(resolve,500))
+    }
+    const stillOpen=(await Promise.all([...ports].map(async port=>await isPortOpen(port)?port:null))).filter(Boolean)
+    if(stillOpen.length)throw new Error(`端口 ${stillOpen.join('、')} 仍被占用，无法重启；请手动结束占用该端口的进程`)
+  }catch(error){appendLog(project.id,'error',error.message);throw error}
+  finally{locks.delete(project.id)}
+  return startProject(project)
+}
+
 // 查找正在监听指定端口的进程 ID（Windows 用 netstat，Linux/macOS 用 ss / lsof）
 async function listeningPids(port){
   const pids=new Set()
@@ -559,12 +583,12 @@ if(req.method==='POST' && url.pathname==='/api/projects/stop-all'){
     reorderProjects(body.ids)
     return send(res,200,{projects:await Promise.all(projects.map(projectStatus))})
   }
-  const actionMatch=url.pathname.match(/^\/api\/projects\/([\w.-]+)\/(start|stop)$/)
+  const actionMatch=url.pathname.match(/^\/api\/projects\/([\w.-]+)\/(start|stop|restart)$/)
   if(req.method==='POST' && actionMatch){
     await refreshProjects()
     const project=projectMap.get(actionMatch[1])
     if(!project)return send(res,404,{message:'项目不存在'})
-    const result=actionMatch[2]==='start'?await startProject(project):await stopProject(project)
+    const result=actionMatch[2]==='start'?await startProject(project):actionMatch[2]==='restart'?await restartProject(project):await stopProject(project)
     return send(res,200,{project:result})
   }
   if(req.method==='POST' && url.pathname==='/api/infrastructure/docker/start')return send(res,200,{infrastructure:await startDocker()})
