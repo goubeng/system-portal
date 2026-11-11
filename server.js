@@ -35,6 +35,8 @@ const lastExit=new Map()
 const locks=new Set()
 let restartPending=false
 
+class ProjectConflict extends Error{}
+
 fs.mkdirSync(logRoot,{recursive:true})
 
 // 卡片来源：优先读取 AI+PD 项目协同控制台数据库的 pm_projects 表；数据库不可用时回退到 config/projects.json（只读备份）
@@ -50,7 +52,7 @@ function loadFileProjects(){
   const items=JSON.parse(fs.readFileSync(projectConfigPath,'utf8')).map(item=>{
     const projectPath=path.resolve(root,item.relativePath)
     if(!projectRoots.some(projectRoot=>isInsideRoot(projectPath,projectRoot)))throw new Error(`Project ${item.id} is outside workspace.`)
-    return {...item,projectPath}
+    return {...item,projectPath,description:''}
   })
   if(new Set(items.map(item=>item.id)).size!==items.length)throw new Error('Duplicate project IDs.')
   return sortProjects(items,readProjectOrder(items))
@@ -58,29 +60,46 @@ function loadFileProjects(){
 
 // 数据库里没有登记的旧版/历史系统（config/projects.json 里有）继续保留在调度枢纽，保证旧版仍能启动；
 // 与数据库卡片 id 相同、同一分组的同一版本、或登记了同一 Web 端口的视为同一个系统，以数据库为准。
-function mergeFileProjects(dbItems){
+function mergeFileProjects(dbItems,descriptions){
   const ids=new Set(dbItems.map(item=>item.id))
   const versions=new Set(dbItems.filter(item=>item.groupId&&item.versionLabel).map(item=>`${item.groupId}/${item.versionLabel}`))
   const ports=new Set(dbItems.map(item=>item.webPort))
   const kept=fileProjects.filter(item=>!ids.has(item.id)&&!(item.groupId&&item.versionLabel&&versions.has(`${item.groupId}/${item.versionLabel}`))&&!ports.has(item.webPort))
-  return [...dbItems,...kept.map(item=>({...item,fromFile:true}))]
+  return [...dbItems,...kept.map(item=>({...item,description:fileProjectDescription(item,descriptions),fromFile:true}))]
 }
 
-// 数据库里“项目说明”（pm_projects.description）为空时，先用 config/projects.json 里同一系统的说明顶上：
-// 按卡片 id、同名（有版本标签时同名同版本）、同 Web 端口依次匹配。数据库里填了说明就以数据库为准。
-function fillDescriptions(dbItems){
+function fileProjectDescription(project,descriptions){
+  const matches=descriptions.filter(item=>path.relative(item.projectPath,project.projectPath)==='' &&
+    (!project.groupId || !item.groupId || project.groupId===item.groupId) &&
+    (!project.versionLabel || !item.versionLabel || project.versionLabel===item.versionLabel))
+  if(matches.length===1)return matches[0].description
+  const exact=matches.filter(item=>item.code===project.id ||
+    (project.groupId && project.versionLabel && item.groupId===project.groupId && item.versionLabel===project.versionLabel))
+  return exact.length===1?exact[0].description:''
+}
+
+// 健康标识仅从同目录、同探针的配置补齐。
+function fillProjectDefaults(dbItems){
   return dbItems.map(item=>{
-    if(item.description)return item
-    const match=fileProjects.find(file=>file.description&&file.id===item.id)
-      ||fileProjects.find(file=>file.description&&file.name===item.name&&(!item.versionLabel||!file.versionLabel||file.versionLabel===item.versionLabel))
-      ||fileProjects.find(file=>file.description&&file.webPort===item.webPort)
-    return match?{...item,description:match.description}:item
+    const healthMatch=fileProjects.find(file=>file.healthPath===item.healthPath && file.healthType===item.healthType && path.relative(file.projectPath,item.projectPath)==='')
+    return {...item,healthRepository:item.healthRepository||healthMatch?.healthRepository}
   })
 }
 
-function applyProjects(rawItems){
-  const items=mergeFileProjects(fillDescriptions(rawItems))
-  projects=sortProjects(items,readProjectOrder(items))
+function applyProjects(rawItems,descriptions){
+  const items=mergeFileProjects(fillProjectDefaults(rawItems),descriptions)
+  const idCounts=new Map()
+  for(const item of items)idCounts.set(item.id,(idCounts.get(item.id)||0)+1)
+  const usedIds=new Set(idCounts.keys())
+  const distinctItems=items.map(item=>{
+    if(idCounts.get(item.id)===1)return item
+    const baseId=`${item.id}--${item.dbId}`
+    let id=baseId
+    for(let suffix=2;usedIds.has(id);suffix++)id=`${baseId}-${suffix}`
+    usedIds.add(id)
+    return {...item,id}
+  })
+  projects=sortProjects(distinctItems,readProjectOrder(distinctItems))
   projectMap=new Map(projects.map(item=>[item.id,item]))
 }
 
@@ -95,7 +114,7 @@ function refreshProjects(force=false){
         isAllowedPath:target=>projectRoots.some(projectRoot=>isInsideRoot(target,projectRoot)),
         resolveDirectory:directory=>path.resolve(directory)
       })
-      applyProjects(result.projects)
+      applyProjects(result.projects,result.descriptions)
       Object.assign(cardSource,{name:'database',error:null,warnings:result.warnings,refreshedAt:new Date().toISOString()})
     }catch(error){
       Object.assign(cardSource,{error:error.message})
@@ -193,11 +212,12 @@ function requestUrl(url,timeout=1200){
 }
 
 function candidatePorts(project){
+  const reserved=new Set(projects.filter(item=>item.id!==project.id).flatMap(item=>[item.webPort,item.apiPort]))
   return Array.from({length:project.fixedPorts?1:5},(_,offset)=>({
     webPort:project.webPort+offset*2,
     apiPort:project.apiPort ? project.apiPort+offset*2 : null,
     fallback:offset
-  }))
+  })).filter(ports=>!ports.fallback || (!reserved.has(ports.webPort) && !reserved.has(ports.apiPort)))
 }
 
 function projectUrl(project,ports,host='127.0.0.1',entry=project.entry){return `http://${host}:${ports.webPort}${entry}`}
@@ -240,7 +260,7 @@ function portalUrls(){
 }
 
 async function probeProject(project,ports){
-  const response=await requestUrl(healthUrl(project,ports))
+  const response=await requestUrl(healthUrl(project,ports),3000)
   if(!response.ok)return false
   if(project.healthType==='json-ok'){
     try{
@@ -251,10 +271,14 @@ async function probeProject(project,ports){
 return typeof project.healthMarker==='string' && project.healthMarker ? response.body.includes(project.healthMarker) : true
 }
 
-async function findExternal(project){
+function externalCandidates(project){
   // 没有页面标识的 html 卡片无法区分端口上是不是本系统，只检查登记的端口
   const unmarked=project.healthType!=='json-ok' && !project.healthMarker
-  const candidates=project.fixedPorts||unmarked?candidatePorts(project).slice(0,1):candidatePorts(project)
+  return unmarked?candidatePorts(project).slice(0,1):candidatePorts(project)
+}
+
+async function findExternal(project){
+  const candidates=externalCandidates(project)
   const results=await Promise.all(candidates.map(async ports=>await probeProject(project,ports) ? ports : null))
   return results.find(Boolean)||null
 }
@@ -267,21 +291,24 @@ async function choosePorts(project){
     if(ports.apiPort && !await canBind('127.0.0.1',ports.apiPort))continue
     return ports
   }
-  if(project.fixedPorts)throw new Error(`固定端口 ${project.webPort}${project.apiPort?` / ${project.apiPort}`:''} 无法绑定，请核对 Web/API 监听进程及 Windows 保留端口；本项目不支持自动换端口`)
-  throw new Error(`端口槽位 ${project.webPort}-${project.webPort+9} 无可用端口，请检查 Web/API 监听进程及 Windows 保留端口`)
+  if(project.fixedPorts)throw new ProjectConflict(`固定端口 ${project.webPort}${project.apiPort?` / ${project.apiPort}`:''} 无法绑定，请核对 Web/API 监听进程及 Windows 保留端口；本项目不支持自动换端口`)
+  throw new ProjectConflict(`端口槽位 ${project.webPort}-${project.webPort+9} 无可用端口，请检查 Web/API 监听进程及 Windows 保留端口`)
 }
 
 async function projectStatus(project){
   const current=managed.get(project.id)
   if(current){
     const healthy=await probeProject(project,current.ports)
-    const alive=current.child.exitCode===null && !current.child.killed
+    const alive=!current.exitedAt && current.child.exitCode===null && current.child.signalCode===null && !current.child.killed
     return {...publicProject(project),status:healthy?'healthy':alive?'starting':'exited',managed:alive,...shareUrls(project,current.ports),...publicUrls(project,current.ports),ports:current.ports,pid:alive?current.child.pid:null,lastExit:lastExit.get(project.id)||null}
   }
   const external=await findExternal(project)
 if(external)return {...publicProject(project),status:'external',managed:false,...shareUrls(project,external),...publicUrls(project,external),url:projectUrl(project,external),ports:external,pid:null,lastExit:lastExit.get(project.id)||null}
-  const conflict=await Promise.all(candidatePorts(project).map(item=>isPortOpen(item.webPort)))
-  return {...publicProject(project),status:conflict.some(Boolean)?'conflict':'stopped',managed:false,...shareUrls(project),url:null,networkUrl:null,networkUrls:[],mobileUrl:null,networkMobileUrl:null,networkMobileUrls:[],ports:null,pid:null,lastExit:lastExit.get(project.id)||null}
+  const candidates=externalCandidates(project)
+  const checkedPorts=[...new Set(candidates.flatMap(ports=>[ports.webPort,ports.apiPort]).filter(Boolean))]
+  const listeners=await Promise.all(checkedPorts.map(async port=>await isPortOpen(port)?port:null))
+  const listeningPorts=listeners.filter(Boolean)
+  return {...publicProject(project),status:listeningPorts.length?'conflict':'stopped',listeningPorts,managed:false,...shareUrls(project),url:null,networkUrl:null,networkUrls:[],mobileUrl:null,networkMobileUrl:null,networkMobileUrls:[],ports:null,pid:null,lastExit:lastExit.get(project.id)||null}
 }
 
 function publicProject(project){
@@ -298,7 +325,7 @@ function readProjectOrder(items){
   const ids=JSON.parse(fs.readFileSync(projectOrderPath,'utf8'))
   if(!Array.isArray(ids) || !ids.every(id=>typeof id==='string'))throw new Error('显示顺序配置格式错误')
   const currentIds=new Set(items.map(item=>item.id))
-  return [...ids.filter(id=>currentIds.has(id)),...items.map(item=>item.id).filter(id=>!ids.includes(id))]
+  return [...new Set(ids.filter(id=>currentIds.has(id))),...items.map(item=>item.id).filter(id=>!ids.includes(id))]
 }
 
 function sortProjects(items,ids){
@@ -354,7 +381,7 @@ function spawnProject(project,ports){
     lastExit.set(project.id,{code,signal,at:new Date().toISOString()})
     appendLog(project.id,'exit',`code=${code} signal=${signal||''}`)
     const current=managed.get(project.id)
-    if(current?.child===child)managed.delete(project.id)
+    if(current?.child===child)current.exitedAt=Date.now()
   })
   return child
 }
@@ -362,7 +389,17 @@ function spawnProject(project,ports){
 async function startProject(project){
   if(locks.has(project.id))throw new Error('项目正在执行启动或停止操作')
   locks.add(project.id)
+  try{return await startProjectLocked(project)}
+  finally{locks.delete(project.id)}
+}
+
+async function startProjectLocked(project){
   try{
+    const previous=managed.get(project.id)
+    if(previous?.exitedAt){
+      await stopRuntime(project.id,previous)
+      managed.delete(project.id)
+    }
     const existing=await projectStatus(project)
     if(['healthy','external','starting'].includes(existing.status))return existing
     if(!fs.existsSync(project.projectPath))throw new Error('项目目录不存在')
@@ -371,16 +408,20 @@ async function startProject(project){
       if(docker.desktopRunning===false)throw new Error('请先打开 Docker Desktop，再启动本项目')
     }
     const ports=await choosePorts(project)
+    const startedAt=Date.now()
     const child=spawnProject(project,ports)
-    const runtime={child,ports,startedAt:Date.now()}
+    const runtime={child,ports,startedAt}
     managed.set(project.id,runtime)
     appendLog(project.id,'portal',`启动 ${project.name}，Web=${ports.webPort}${ports.apiPort?` API=${ports.apiPort}`:''}`)
     const installing=project.autoInstall && !fs.existsSync(path.join(project.projectPath,'node_modules'))
     try{await waitForHealthy(project,runtime,project.kind==='static'?10000:installing?300000:30000)}
-    catch(error){await stopRuntime(project.id,runtime);throw error}
+    catch(error){
+      await stopRuntime(project.id,runtime)
+      if(managed.get(project.id)===runtime)managed.delete(project.id)
+      throw error
+    }
     return projectStatus(project)
   }catch(error){appendLog(project.id,'error',error.message);throw error}
-  finally{locks.delete(project.id)}
 }
 
 function execFileResult(file,args,options={}){
@@ -388,14 +429,62 @@ function execFileResult(file,args,options={}){
 }
 
 async function stopRuntime(id,runtime){
-  if(!runtime || runtime.child.exitCode!==null)return
+  if(!runtime?.child.pid)return
   if(process.platform==='win32'){
-    await execFileResult('taskkill.exe',['/PID',String(runtime.child.pid),'/T'],{timeout:5000})
-    await new Promise(resolve=>setTimeout(resolve,800))
-    if(runtime.child.exitCode===null)await execFileResult('taskkill.exe',['/PID',String(runtime.child.pid),'/T','/F'],{timeout:5000})
+    const tree=windowsRuntimeTree(runtime,await windowsProcesses())
+    if(!tree.length && !runtime.exitedAt && pidAlive(runtime.child.pid))throw new Error('无法确认门户启动的后台进程归属')
+    return stopWindowsProcesses(tree)
   }else{
     // 子进程单独成组，整组终止（npm → node → vite / 接口服务）
-    try{process.kill(-runtime.child.pid,'SIGTERM')}catch{runtime.child.kill('SIGTERM')}
+    if(runtime.exitedAt)return
+    const group=-runtime.child.pid
+    try{process.kill(group,'SIGTERM')}catch(error){if(error.code!=='ESRCH')throw error}
+    await waitForStop(()=>pidAlive(group)).catch(()=>{
+      try{process.kill(group,'SIGKILL')}catch(error){if(error.code!=='ESRCH')throw error}
+    })
+    await waitForStop(()=>pidAlive(group))
+  }
+}
+
+async function windowsProcesses(){
+  const command="@(Get-CimInstance Win32_Process | Where-Object CreationDate | ForEach-Object { @{pid=[int]$_.ProcessId; parent=[int]$_.ParentProcessId; created=[long]([DateTimeOffset]$_.CreationDate).ToUnixTimeMilliseconds(); commandLine=$_.CommandLine} }) | ConvertTo-Json -Compress"
+  const result=await execFileResult('powershell.exe',['-NoProfile','-NonInteractive','-Command',`$ErrorActionPreference='Stop'; [Console]::OutputEncoding=[System.Text.UTF8Encoding]::new($false); ${command}`],{timeout:8000,maxBuffer:8*1024*1024})
+  if(!result.ok)throw new Error('无法读取 Windows 进程归属')
+  return [JSON.parse(result.stdout||'[]')].flat()
+}
+
+function windowsRuntimeTree(runtime,processes){
+  const pid=runtime.child.pid
+  const root=processes.find(item=>item.pid===pid)
+  if(!runtime.exitedAt && (!root || Math.abs(root.created-runtime.startedAt)>1000))return []
+  const tree=runtime.exitedAt?[]:[root]
+  const children=(parent,after,before=Infinity)=>processes.filter(item=>item.pid!==process.pid && item.parent===parent && item.created>=after && item.created<=before)
+  tree.push(...children(pid,root&&!runtime.exitedAt?root.created:runtime.startedAt-1000,runtime.exitedAt))
+  const seen=new Set([pid])
+  for(let index=runtime.exitedAt?0:1;index<tree.length;index++){
+    const item=tree[index]
+    if(seen.has(item.pid))continue
+    seen.add(item.pid)
+    tree.push(...children(item.pid,item.created).filter(child=>!seen.has(child.pid)))
+  }
+  return tree
+}
+
+async function stopWindowsProcesses(items){
+  if(!items.length)return
+  const targets=JSON.stringify(items.map(({pid,created})=>({pid,created})))
+  const command=`$ErrorActionPreference='Stop'; $targets=ConvertFrom-Json '${targets}'; $failed=$false; foreach($item in $targets){ try { $proc=Get-Process -Id $item.pid -ErrorAction SilentlyContinue; if($proc -and [Math]::Abs(([DateTimeOffset]$proc.StartTime).ToUnixTimeMilliseconds()-$item.created) -le 1){ Stop-Process -InputObject $proc -Force } } catch { $failed=$true } }; if($failed){ exit 1 }`
+  const result=await execFileResult('powershell.exe',['-NoProfile','-NonInteractive','-Command',command],{timeout:8000})
+  if(!result.ok)throw new Error('Windows 无法结束已识别的进程')
+  const identities=new Map(items.map(item=>[item.pid,item.created]))
+  await waitForStop(async()=> (await windowsProcesses()).some(item=>identities.get(item.pid)===item.created))
+}
+
+async function waitForStop(stillRunning){
+  const deadline=Date.now()+5000
+  while(await stillRunning()){
+    if(Date.now()>=deadline)throw new Error('后台进程仍在运行')
+    await new Promise(resolve=>setTimeout(resolve,350))
   }
 }
 
@@ -408,40 +497,64 @@ async function stopProject(project){
   finally{locks.delete(project.id)}
 }
 
-// 重启：先停掉本门户启动的进程，再释放该系统登记的 Web/API 端口（含外部运行或健康检查未通过的残留进程），最后重新启动。
-// 只释放“登记端口”和健康检查确认属于本系统的端口，不动备用槽位上的其他程序。
 async function restartProject(project){
-  if(locks.has(project.id))throw new Error('项目正在执行启动或停止操作')
+  if(locks.has(project.id))throw new ProjectConflict('项目正在执行启动或停止操作')
   locks.add(project.id)
   try{
     const runtime=managed.get(project.id)
-    const external=runtime?null:await findExternal(project)
-    const ports=new Set([project.webPort,project.apiPort,...projectPortList(runtime?.ports),...projectPortList(external)].filter(Boolean))
-    appendLog(project.id,'portal','收到重启请求，先释放端口 '+[...ports].join(', '))
-    if(runtime){await stopRuntime(project.id,runtime);managed.delete(project.id)}
-    // 等进程自行退出；仍在监听的端口再强制结束对应进程
-    for(let i=0;i<20;i++){
-      if(!(await Promise.all([...ports].map(isPortOpen))).some(Boolean))break
-      if(i===6){const pids=await releasePorts([...ports]);if(pids.length)appendLog(project.id,'portal','已结束占用端口的进程：'+pids.join(', '))}
-      await new Promise(resolve=>setTimeout(resolve,500))
+    const status=runtime?null:await projectStatus(project)
+    const external=status?.status==='external'?status.ports:null
+    appendLog(project.id,'portal',`收到重启请求：${project.name}`)
+    if(status?.status==='conflict')throw new ProjectConflict(`端口 ${status.listeningPorts.join('、')} 有监听，但健康检查未通过，请在原启动入口核查服务后重试`)
+    if(runtime){
+      await stopRuntime(project.id,runtime)
+    }else if(external){
+      await stopExternalForRestart(project,external)
     }
-    const stillOpen=(await Promise.all([...ports].map(async port=>await isPortOpen(port)?port:null))).filter(Boolean)
-    if(stillOpen.length)throw new Error(`端口 ${stillOpen.join('、')} 仍被占用，无法重启；请手动结束占用该端口的进程`)
+    const ports=projectPortList(runtime?.ports||external)
+    if(ports.length)await verifyProjectPortsStopped(ports)
+    if(runtime && managed.get(project.id)===runtime)managed.delete(project.id)
+    const result=await startProjectLocked(project)
+    if(result.status!=='healthy' || !result.managed)throw new Error('未能确认系统已由当前门户重新启动，请查看日志与状态')
+    return result
   }catch(error){appendLog(project.id,'error',error.message);throw error}
   finally{locks.delete(project.id)}
-  return startProject(project)
+}
+
+async function stopExternalForRestart(project,ports){
+  if(process.platform==='win32')return stopWindowsProjectListeners(project,projectPortList(ports),{requireOwnership:true})
+  const port=ports.webPort
+  const conflictingOwner=projects.some(other=>other.id!==project.id &&
+    [other.webPort,other.apiPort,...projectPortList(managed.get(other.id)?.ports)].includes(port))
+  const identified=project.healthType==='json-ok'?project.healthRepository:project.healthMarker
+  if(!identified || conflictingOwner || port===portalPort)throw new ProjectConflict(`无法确认 Web 端口 ${port} 的监听进程归属，请在原启动入口停止服务后重试`)
+  const pids=await listeningPids(port)
+  if(pids.length!==1 || !await probeProject(project,ports))throw new ProjectConflict(`无法确认 Web 端口 ${port} 的监听进程，请在原启动入口停止服务后重试`)
+  const currentPids=await listeningPids(port)
+  if(currentPids.length!==1 || currentPids[0]!==pids[0])throw new ProjectConflict(`Web 端口 ${port} 的监听进程已变化，请重试`)
+  await killPid(pids[0])
 }
 
 // 查找正在监听指定端口的进程 ID（Windows 用 netstat，Linux/macOS 用 ss / lsof）
+async function windowsListenerTable(){
+  const result=await execFileResult('netstat.exe',['-ano'],{timeout:8000,maxBuffer:8*1024*1024})
+  if(!result.ok)throw new Error('无法读取 Windows 端口监听进程')
+  const listeners=new Map()
+  for(const line of String(result.stdout||'').split(/\r?\n/)){
+    const cols=line.trim().split(/\s+/)
+    if(cols.length<5 || !/^TCP$/i.test(cols[0]) || !/^LISTENING$/i.test(cols[3]))continue
+    const port=Number(cols[1].split(':').at(-1))
+    if(!listeners.has(port))listeners.set(port,new Set())
+    listeners.get(port).add(Number(cols[4]))
+  }
+  return listeners
+}
+
 async function listeningPids(port){
   const pids=new Set()
   const add=value=>{const pid=Number(value);if(Number.isInteger(pid) && pid>4 && pid!==process.pid)pids.add(pid)}
   if(process.platform==='win32'){
-    const result=await execFileResult('netstat.exe',['-ano','-p','tcp'],{timeout:8000,maxBuffer:8*1024*1024})
-    for(const line of String(result.stdout||'').split(/\r?\n/)){
-      const cols=line.trim().split(/\s+/)
-      if(cols.length>=5 && /^LISTENING$/i.test(cols[3]) && cols[1].endsWith(`:${port}`))add(cols[4])
-    }
+    for(const pid of (await windowsListenerTable()).get(port)||[])add(pid)
     return [...pids]
   }
   const ss=await execFileResult('ss',['-ltnpH',`sport = :${port}`],{timeout:5000})
@@ -471,56 +584,99 @@ async function killPid(pid){
   if(pidAlive(pid)){try{process.kill(target,'SIGKILL')}catch{}}
 }
 
-async function releasePorts(ports){
-  const killed=new Set()
-  for(const port of ports){
-    if(!port || port===portalPort)continue
-    for(const pid of await listeningPids(port)){
-      if(killed.has(pid))continue
-      killed.add(pid)
-      await killPid(pid)
-    }
-  }
-  return [...killed]
-}
-
 function projectPortList(ports){
   return ports ? [ports.webPort,ports.apiPort].filter(Boolean) : []
 }
 
-// 停止所有系统服务：包括由门户启动的，以及在门户之外运行（外部运行）的
-async function stopManagedProjects(){
-  const result={managed:[],external:[],pids:[]}
-  const targets=new Map()
-  // 先识别外部运行的项目（以健康检查确认端口属于该系统，避免误杀无关程序）
-  await Promise.all(projects.filter(project=>!managed.has(project.id) && !locks.has(project.id)).map(async project=>{
-    const ports=await findExternal(project)
-    if(ports)targets.set(project.id,{project,ports})
-  }))
-  const entries=[...managed.entries()].filter(([id])=>!locks.has(id))
-  for(const [id,runtime] of entries)targets.set(id,{project:projectMap.get(id),ports:runtime.ports,managed:true})
-  await Promise.all(entries.map(async([id,runtime])=>{
-    locks.add(id)
-    try{
-      await stopRuntime(id,runtime)
-      managed.delete(id)
-      result.managed.push(id)
-      appendLog(id,'portal','已通过头部操作停止服务')
-    }finally{locks.delete(id)}
-  }))
-  for(const [id,target] of targets){
-    if(locks.has(id))continue
-    locks.add(id)
-    try{
-      // 门户启动的项目已被终止，这里仅清理残留监听；外部运行的项目按端口结束进程
-      const pids=await releasePorts(projectPortList(target.ports))
-      result.pids.push(...pids)
-      if(!target.managed){
-        result.external.push(id)
-        appendLog(id,'portal',pids.length?`已结束外部运行的服务进程：${pids.join(', ')}`:'未找到外部运行的监听进程')
-      }
-    }finally{locks.delete(id)}
+function ownsWindowsListener(project,processInfo){
+  if(!processInfo?.commandLine || !project.projectPath)return false
+  const directory=path.win32.resolve(project.projectPath).toLowerCase().replace(/[\\/]$/,'')
+  const escaped=directory.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')
+  return new RegExp(`(?:^|[\\s"=])${escaped}(?:\\\\|[\\s"]|$)`).test(processInfo.commandLine.toLowerCase().replaceAll('/','\\'))
+}
+
+async function stopWindowsProjectListeners(project,ports,{requireOwnership=false}={}){
+  const observedAt=Date.now()
+  let listeners,snapshot
+  try{
+    listeners=await windowsListenerTable()
+    snapshot=ports.some(port=>listeners.has(port))?await windowsProcesses():[]
+  }catch(error){
+    if(requireOwnership)throw new ProjectConflict(`${error.message}，请在原启动入口核查服务后重试`)
+    throw error
   }
+  const protectedIds=new Set([process.pid,...[...managed.entries()].filter(([id])=>id!==project.id).flatMap(([,runtime])=>windowsRuntimeTree(runtime,snapshot).map(item=>item.pid))])
+  const targets=new Map()
+  const unresolved=[]
+  for(const port of ports){
+    const pids=[...(listeners.get(port)||[])]
+    const shared=projects.some(other=>other.id!==project.id && [other.webPort,other.apiPort,...projectPortList(managed.get(other.id)?.ports)].includes(port))
+    if(shared || port===portalPort){
+      if(requireOwnership && (pids.length || await isPortOpen(port)))unresolved.push(port)
+      continue
+    }
+    const owned=[]
+    for(const pid of pids){
+      const item=snapshot.find(processInfo=>processInfo.pid===pid)
+      if(pid>4 && item?.created<=observedAt && !protectedIds.has(pid) && ownsWindowsListener(project,item))owned.push(item)
+    }
+    if(requireOwnership && (owned.length!==pids.length || (!pids.length && await isPortOpen(port))))unresolved.push(port)
+    for(const item of owned)targets.set(item.pid,item)
+  }
+  if(unresolved.length)throw new ProjectConflict(`无法确认端口 ${unresolved.join('、')} 的监听进程归属，请在原启动入口停止服务后重试`)
+  await stopWindowsProcesses([...targets.values()])
+}
+
+async function verifyProjectPortsStopped(ports){
+  let remaining=[]
+  try{
+    await waitForStop(async()=>{
+      const table=process.platform==='win32'?await windowsListenerTable():null
+      const listeners=await Promise.all(ports.map(async port=>await isPortOpen(port)||(table?table.has(port):(await listeningPids(port)).length)?port:null))
+      remaining=listeners.filter(Boolean)
+      return remaining.length>0
+    })
+  }catch(error){
+    if(!remaining.length)throw error
+    throw new ProjectConflict(`端口 ${remaining.join('、')} 仍有监听，请核查对应进程`)
+  }
+}
+
+// 已知进程结束且端口释放后，才将项目计为停止成功。
+async function stopManagedProjects(){
+  const result={managed:[],external:[],failed:[]}
+  const targets=new Map(projects.map(project=>[project.id,project]))
+  for(const id of managed.keys())if(!targets.has(id))targets.set(id,{id,name:id})
+  const recordFailure=(project,message)=>{
+    result.failed.push({id:project.id,name:project.name,message})
+    appendLog(project.id,'error',message)
+  }
+  const initialListeners=process.platform==='win32'?windowsListenerTable().then(table=>({table}),error=>({error})):null
+  await Promise.all([...targets.values()].map(async project=>{
+    const {id}=project
+    if(locks.has(id))return recordFailure(project,'项目正在执行其他操作')
+    locks.add(id)
+    try{
+      const runtime=managed.get(id)
+      const status=runtime?null:await projectStatus(project)
+      const ports=projectPortList(runtime?.ports||status?.ports)
+      if(status?.status==='conflict')ports.push(...status.listeningPorts)
+      if(status?.status==='stopped'){
+        if(!initialListeners)return
+        const {table,error}=await initialListeners
+        if(error)throw error
+        ports.push(...externalCandidates(project).flatMap(projectPortList).filter(port=>table.has(port)))
+        if(!ports.length)return
+      }
+      if(runtime)await stopRuntime(id,runtime)
+      if(process.platform==='win32' && project.projectPath)await stopWindowsProjectListeners(project,ports)
+      else if(status?.status==='external')await stopExternalForRestart(project,status.ports)
+      await verifyProjectPortsStopped(ports)
+      if(runtime)managed.delete(id)
+      result[runtime?'managed':'external'].push(id)
+      appendLog(id,'portal','已确认系统服务停止')
+    }catch(error){recordFailure(project,error.message)}finally{locks.delete(id)}
+  }))
   return result
 }
 
@@ -566,16 +722,17 @@ return send(res,200,{token:csrfToken,projects:statuses,source:sourceInfo(),infra
     await refreshProjects()
     return send(res,200,{projects:await Promise.all(projects.map(projectStatus)),source:sourceInfo(),infrastructure:await infrastructureStatus(),lanIPs:getLanIPs()})
   }
-  const logMatch=url.pathname.match(/^\/api\/projects\/([\w.-]+)\/logs$/)
+  const logMatch=url.pathname.match(/^\/api\/projects\/([^/]+)\/logs$/)
   if(req.method==='GET' && logMatch){
+    const id=decodeURIComponent(logMatch[1])
     const tail=Math.min(300,Math.max(1,Number(url.searchParams.get('tail'))||120))
-    if(!projectMap.has(logMatch[1]))return send(res,404,{message:'项目不存在'})
-    return send(res,200,{lines:(logs.get(logMatch[1])||[]).slice(-tail)})
+    if(!projectMap.has(id))return send(res,404,{message:'项目不存在'})
+    return send(res,200,{lines:(logs.get(id)||[]).slice(-tail)})
   }
   if(req.method==='POST' && !authorizedMutation(req))return send(res,403,{message:'请求校验失败，请刷新门户后重试'})
 if(req.method==='POST' && url.pathname==='/api/projects/stop-all'){
     const result=await stopManagedProjects()
-    return send(res,200,{stopped:[...result.managed,...result.external],managed:result.managed,external:result.external,projects:await Promise.all(projects.map(projectStatus))})
+    return send(res,200,{stopped:[...result.managed,...result.external],managed:result.managed,external:result.external,failed:result.failed,projects:await Promise.all(projects.map(projectStatus))})
   }
   if(req.method==='POST' && url.pathname==='/api/projects/order'){
     const body=await readJsonBody(req)
@@ -583,10 +740,10 @@ if(req.method==='POST' && url.pathname==='/api/projects/stop-all'){
     reorderProjects(body.ids)
     return send(res,200,{projects:await Promise.all(projects.map(projectStatus))})
   }
-  const actionMatch=url.pathname.match(/^\/api\/projects\/([\w.-]+)\/(start|stop|restart)$/)
+  const actionMatch=url.pathname.match(/^\/api\/projects\/([^/]+)\/(start|stop|restart)$/)
   if(req.method==='POST' && actionMatch){
     await refreshProjects()
-    const project=projectMap.get(actionMatch[1])
+    const project=projectMap.get(decodeURIComponent(actionMatch[1]))
     if(!project)return send(res,404,{message:'项目不存在'})
     const result=actionMatch[2]==='start'?await startProject(project):actionMatch[2]==='restart'?await restartProject(project):await stopProject(project)
     return send(res,200,{project:result})
@@ -643,7 +800,7 @@ const server=http.createServer(async(req,res)=>{
     if(url.pathname==='/healthz')return send(res,200,{ok:true,pid:process.pid})
     if(url.pathname.startsWith('/api/'))return await apiHandler(req,res,url)
     return servePortal(req,res,url)
-  }catch(error){return send(res,error.message.includes('只能停止')?409:500,{message:error.message})}
+  }catch(error){return send(res,error instanceof ProjectConflict || error.message.includes('只能停止')?409:500,{message:error.message})}
 })
 
 server.listen(portalPort,portalHost,()=>{
@@ -652,7 +809,9 @@ server.listen(portalPort,portalHost,()=>{
 })
 
 async function shutdown(){
-  await Promise.all([...managed.entries()].map(([id,runtime])=>stopRuntime(id,runtime)))
+  await Promise.all([...managed.entries()].map(([id,runtime])=>stopRuntime(id,runtime).catch(error=>{
+    appendLog(id,'error',error.message)
+  })))
   server.close(()=>process.exit(0))
   setTimeout(()=>process.exit(1),5000).unref()
 }

@@ -147,7 +147,7 @@
           </div>
 
           <!-- 描述 -->
-          <p class="card-desc">{{ item.description }}</p>
+          <p v-if="item.description" class="card-desc">{{ item.description }}</p>
 
           <!-- URL区域 -->
           <div class="card-urls" v-if="['healthy','external','starting'].includes(item.status) && item.ports">
@@ -189,32 +189,32 @@
 
           <!-- 底部操作 -->
           <div class="card-foot">
-            <button class="foot-link text-gray" v-if="['healthy','external','starting'].includes(item.status)" @click="showLogs(item)">
+            <button class="foot-link text-gray" v-if="['healthy','external','starting','conflict'].includes(item.status)" @click="showLogs(item)">
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
               日志
             </button>
             <div class="foot-actions" style="margin-left: auto;">
               <t-button
-                v-if="item.status!=='stopped'"
+                v-if="['healthy','external'].includes(item.status)"
                 variant="outline" size="small"
-                :loading="busyId===item.id && busyAction==='restart'"
-                :disabled="busyId===item.id && busyAction!=='restart'"
+                :loading="busyActions.get(item.id)==='restart'"
+                :disabled="busyActions.has(item.id)"
                 @click="askRestart(item)">
                 重启服务
               </t-button>
               <t-button
                 v-if="['healthy','external','starting'].includes(item.status) && item.managed"
                 theme="danger" size="small"
-                :loading="busyId===item.id && busyAction==='stop'"
-                :disabled="busyId===item.id && busyAction!=='stop'"
+                :loading="busyActions.get(item.id)==='stop'"
+                :disabled="busyActions.has(item.id)"
                 @click="projectAction(item,'stop')">
                 停止服务
               </t-button>
               <t-button
                 v-if="!['healthy','external','starting'].includes(item.status)"
                 theme="primary" size="small"
-                :loading="busyId===item.id && busyAction==='start'"
-                :disabled="busyId===item.id"
+                :loading="busyActions.get(item.id)==='start'"
+                :disabled="busyActions.has(item.id)"
                 @click="projectAction(item,'start')">
                 启动服务
               </t-button>
@@ -224,8 +224,8 @@
           </div>
 
           <!-- 提示条 -->
-          <div v-if="item.status==='external'" class="card-hint warn">该服务不是由当前门户启动；可点击顶部“停止所有系统服务”一并结束。</div>
-          <div v-if="item.status==='conflict'" class="card-hint error">检测到 Web 或 API 端口有监听，但系统健康检查未通过。可点“重启服务”释放该系统的端口并重新启动，也可查看日志与帮助。</div>
+          <div v-if="item.status==='external'" class="card-hint warn">该服务由外部启动。可通过顶部“停止所有系统服务”尝试停止，或在原启动入口停止。</div>
+          <div v-if="item.status==='conflict'" class="card-hint error">检测到端口{{ item.listeningPorts?.length ? ` ${item.listeningPorts.join('、')} ` : ' ' }}有监听，但 Web 健康检查 {{ item.healthPath }} 未通过。请查看日志与帮助。</div>
         </article>
       </section>
     </div>
@@ -250,14 +250,14 @@
     <!-- ====== 重启单个系统确认 ====== -->
     <t-dialog v-model:visible="restartItemDialog.visible" :header="`重启服务 · ${restartItemDialog.item?.name || ''}`" placement="center" width="480px" :footer="false">
       <div class="restart-confirm-message" v-if="restartItemDialog.item">
-        <p>将先停止该系统，并结束占用其登记端口（Web {{ restartItemDialog.item.recommended?.webPort }}<template v-if="restartItemDialog.item.recommended?.apiPort"> / API {{ restartItemDialog.item.recommended.apiPort }}</template>）的进程，然后重新启动。</p>
-        <div class="restart-confirm-warning" v-if="restartItemDialog.item.status==='conflict' || restartItemDialog.item.status==='external'">
+        <p>确认后会尝试停止当前服务并重新启动，服务期间可能短暂中断。</p>
+        <div class="restart-confirm-warning" v-if="restartItemDialog.item.status==='external'">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
             <circle cx="12" cy="12" r="9" />
             <path d="M12 7.5v5.5" />
             <circle cx="12" cy="16.5" r="1" fill="currentColor" stroke="none" />
           </svg>
-          <p>{{ restartItemDialog.item.status==='conflict' ? '这些端口上的程序没有通过该系统的健康检查，可能是遗留的旧进程，也可能是其他程序，确认后都会被结束。' : '该服务不是由本门户启动的，确认后会结束它并改由本门户重新启动。' }}</p>
+          <p>外部服务需要确认监听进程归属。归属不明或端口未释放时，请在原启动入口停止服务后重试。</p>
         </div>
       </div>
       <div class="restart-confirm-actions">
@@ -332,7 +332,7 @@
               <span class="section-badge warn">核心指引</span>
               <span class="section-heading">如何停止「外部运行」的独立进程？</span>
             </div>
-            <span class="st-desc">服务在外部终端启动或平台重启脱管；“停止所有系统服务”会按卡片登记端口（经健康检查确认）结束这些进程，也可手动处理</span>
+            <span class="st-desc">服务在外部终端启动或平台重启后转为外部运行。批量停止时会核查进程归属，并提示未确认停止的系统。</span>
           </div>
 
           <div class="external-cols-layout">
@@ -485,8 +485,7 @@ const queryPortCommand = computed(() => {
 const killAllNodeCommand = 'Get-Process node -ErrorAction SilentlyContinue | Stop-Process -Force'
 const token = ref('')
 const refreshing = ref(false)
-const busyId = ref('')
-const busyAction = ref('')
+const busyActions = reactive(new Map())
 const logDialog = reactive({ visible: false, name: '', lines: [] })
 const detailDialog = reactive({ visible: false, item: null })
 let timer
@@ -640,14 +639,15 @@ async function refreshStatus(silent = false) {
 
 /* ---- 项目操作 ---- */
 async function projectAction(item, action) {
-  busyId.value = item.id; busyAction.value = action
+  if (busyActions.has(item.id)) return
+  busyActions.set(item.id, action)
   try {
-    const d = await api(`/api/projects/${item.id}/${action}`, { method: 'POST', body: '{}' })
+    const d = await api(`/api/projects/${encodeURIComponent(item.id)}/${action}`, { method: 'POST', body: '{}' })
     const i = projects.value.findIndex(p => p.id === item.id)
     if (i >= 0) projects.value[i] = d.project
     MessagePlugin.success(action === 'start' ? '服务启动成功' : action === 'restart' ? '服务已重启' : '服务已停止')
   } catch (e) { MessagePlugin.error(e.message); await refreshStatus(true) }
-  finally { busyId.value = ''; busyAction.value = '' }
+  finally { busyActions.delete(item.id) }
 }
 
 function askRestart(item) {
@@ -664,10 +664,14 @@ async function stopAll() {
   if (stoppingAll.value || exitingPortal.value || restartingPortal.value) return
   stoppingAll.value = true
   try {
-    // 服务端停止所有运行中的系统：包括由本门户启动的，以及外部运行（非门户启动）的
     const d = await api('/api/projects/stop-all', { method: 'POST', body: '{}' })
     if (Array.isArray(d.projects)) projects.value = d.projects
     const count = d.stopped?.length || 0
+    if (d.failed?.length) {
+      const details = d.failed.map(({ id, name, message }) => `${name || id}（${message}）`).join('、')
+      MessagePlugin.warning(`已停止 ${count} 个系统，${d.failed.length} 个系统未确认停止。${details}`)
+      return
+    }
     MessagePlugin.success(count ? `已停止 ${count} 个系统服务（其中外部运行 ${d.external?.length || 0} 个）` : '当前没有运行中的系统服务')
   } catch (e) { MessagePlugin.error(e.message); await refreshStatus(true) }
   finally { stoppingAll.value = false }
@@ -731,7 +735,7 @@ function openProject(item) { if (item.url) window.open(item.url, '_blank', 'noop
 
 async function showLogs(item) {
   logDialog.name = item.name; logDialog.visible = true
-  try { logDialog.lines = (await api(`/api/projects/${item.id}/logs?tail=200`)).lines }
+  try { logDialog.lines = (await api(`/api/projects/${encodeURIComponent(item.id)}/logs?tail=200`)).lines }
   catch (e) { logDialog.lines = [e.message] }
 }
 
