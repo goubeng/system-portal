@@ -191,7 +191,7 @@
 .card--healthy { border-top-color: #10b981; }
 .card--external { border-top-color: #f59e0b; }
 .card--starting { border-top-color: #3b82f6; }
-.card--conflict, .card--exited { border-top-color: #ef4444; }
+.card--conflict { border-top-color: #ef4444; }
 
 
 /* 头部 */

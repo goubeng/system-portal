@@ -747,7 +747,8 @@ function statusMeta(s) {
     external: { label: '外部运行', theme: 'warning' },
     starting: { label: '启动中', theme: 'primary' },
     conflict: { label: '服务待核查', theme: 'danger' },
-    exited: { label: '已退出', theme: 'danger' },
+    // 进程退出后在卡片上统一按“未启动”展示，避免误报红色告警态
+    exited: { label: '未启动', theme: 'default' },
     stopped: { label: '未启动', theme: 'default' }
   })[s] || { label: s || '未知', theme: 'default' }
 }
